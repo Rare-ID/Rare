@@ -1,0 +1,31 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install -U pip setuptools wheel
+          python -m pip install pytest-cov
+          python -m pip install -e "./rare-identity-core[test]"
+          python -m pip install -e "./rare-sdk-python[test]"
+          python -m pip install -e "./rare-thirdparty-moltbook-example[test]"
+
+      - name: Run coverage gates
+        run: ./scripts/test_cov_all.sh
+
+      - name: Compile check
+        run: python -m compileall rare-identity-core rare-sdk-python rare-thirdparty-moltbook-example

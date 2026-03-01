@@ -18,6 +18,8 @@ This document describes the currently active Rare v1 flow, from registration to 
 - `profile.name`
 - `public_identity_attestation`
 - `key_mode=hosted-signer`
+- `hosted_management_token` (returned once; required by `/v1/signer/*`)
+- `hosted_management_token_expires_at` (unix seconds; token expiry)
 
 ### 2.2 Self-hosted Key Mode (`self-hosted`)
 1. Agent generates an Ed25519 keypair locally.
@@ -34,6 +36,8 @@ This document describes the currently active Rare v1 flow, from registration to 
 2. Rare creates `upgrade_request_id` and sets status to `human_pending`.
 3. Rare sends a magic link (local stub):
 - `POST /v1/upgrades/l1/email/send-link`
+- Requires management auth (hosted bearer or self-hosted signed proof headers)
+- Raw `token`/`magic_link` are returned only when `RARE_ALLOW_LOCAL_UPGRADE_SHORTCUTS=1`.
 4. Human clicks the link:
 - `GET /v1/upgrades/l1/email/verify?token=...`
 5. Rare auto-upgrades to L1 and updates:
@@ -47,11 +51,14 @@ Prerequisite: Agent is already L1.
 Path A (OAuth callback):
 1. Agent creates an upgrade request (`target_level=L2`, signed with `rare-upgrade-v1`).
 2. `POST /v1/upgrades/l2/social/start` to get `authorize_url,state`.
+- Requires management auth (hosted bearer or self-hosted signed proof headers)
 3. Social callback: `GET /v1/upgrades/l2/social/callback?provider=x|github&code=...&state=...`.
 4. Rare auto-upgrades to L2 and writes social claims.
 
 Path B (Local integration shortcut):
 1. `POST /v1/upgrades/l2/social/complete` with `provider_user_snapshot`.
+- Requires management auth (hosted bearer or self-hosted signed proof headers)
+- Disabled by default; enable only for local dev with `RARE_ALLOW_LOCAL_UPGRADE_SHORTCUTS=1`.
 2. Rare validates and auto-upgrades to L2.
 
 ## 4. Full Identity Authorization for Platforms (grant + full)
@@ -90,14 +97,30 @@ To allow a platform to receive full identity (including real L2), Agent must gra
 2. Platform verifies signature using session public key and enforces nonce replay protection.
 
 ## 7. Common Query and Management APIs
-- List granted platforms: `GET /v1/agents/platform-grants/{agent_id}`
+- List granted platforms: `GET /v1/agents/platform-grants/{agent_id}` (`Authorization: Bearer <admin_or_bound_hosted_token>`)
 - Revoke platform grant: `DELETE /v1/agents/platform-grants/{platform_aud}`
 - Refresh public attestation: `POST /v1/attestations/public/issue`
-- Check upgrade status: `GET /v1/upgrades/requests/{upgrade_request_id}`
+- Check upgrade status: `GET /v1/upgrades/requests/{upgrade_request_id}` (`Authorization: Bearer <admin_or_bound_hosted_token>`)
+- Self-hosted signed proof headers are accepted for the two read APIs above:
+- `X-Rare-Agent-Id`
+- `X-Rare-Agent-Nonce`
+- `X-Rare-Agent-Issued-At`
+- `X-Rare-Agent-Expires-At`
+- `X-Rare-Agent-Signature`
+
+### Hosted signer API auth (new)
+- Every `/v1/signer/*` call must include `Authorization: Bearer <hosted_management_token>`.
+- The token is bound to one `agent_id`; token owner must equal request `agent_id`.
+- Only hosted-signer agents can use this token path; self-hosted agents sign locally.
+- Token has finite TTL (default 30 days) and expires at `hosted_management_token_expires_at`.
+- Rotate token: `POST /v1/signer/rotate_management_token`.
+- Revoke token: `POST /v1/signer/revoke_management_token`.
 
 ## 8. CLI Commands
 ```bash
 rare register --name alice
+rare rotate-hosted-token
+rare revoke-hosted-token
 rare request-upgrade --level L1 --email alice@example.com
 rare request-upgrade --level L2
 rare start-social --request-id <id> --provider github

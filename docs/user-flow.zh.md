@@ -18,6 +18,8 @@
 - `profile.name`
 - `public_identity_attestation`
 - `key_mode=hosted-signer`
+- `hosted_management_token`（仅注册响应返回一次；用于调用 `/v1/signer/*`）
+- `hosted_management_token_expires_at`（Unix 秒级时间戳，token 过期时间）
 
 ### 2.2 自托管密钥（self-hosted）
 1. Agent 本地生成 Ed25519 密钥对。
@@ -34,6 +36,8 @@
 2. Rare 创建 `upgrade_request_id`，状态进入 `human_pending`。
 3. 发送邮箱链接（本地 stub）：
 - `POST /v1/upgrades/l1/email/send-link`
+- 需要管理鉴权（hosted bearer 或 self-hosted 签名证明头）
+- 仅当 `RARE_ALLOW_LOCAL_UPGRADE_SHORTCUTS=1` 时才会回传原始 `token/magic_link`。
 4. 人类点击链接：
 - `GET /v1/upgrades/l1/email/verify?token=...`
 5. Rare 自动升级到 L1，并更新：
@@ -47,11 +51,14 @@
 路径 A（OAuth 回调）：
 1. Agent 发起升级请求（`target_level=L2`，同样用 `rare-upgrade-v1` 签名）。
 2. `POST /v1/upgrades/l2/social/start` 获取 `authorize_url,state`。
+- 需要管理鉴权（hosted bearer 或 self-hosted 签名证明头）
 3. 社交回调：`GET /v1/upgrades/l2/social/callback?provider=x|github&code=...&state=...`。
 4. Rare 自动升级到 L2，写入对应社交 claim。
 
 路径 B（本地联调捷径）：
 1. `POST /v1/upgrades/l2/social/complete` 直接提交 `provider_user_snapshot`。
+- 需要管理鉴权（hosted bearer 或 self-hosted 签名证明头）
+- 默认关闭；仅在本地联调时通过 `RARE_ALLOW_LOCAL_UPGRADE_SHORTCUTS=1` 开启。
 2. Rare 校验后自动升级到 L2。
 
 ## 4. 平台完整身份授权（grant + full）
@@ -90,14 +97,30 @@
 2. 平台使用会话公钥验证动作签名并校验 nonce 防重放。
 
 ## 7. 常用查询与管理
-- 查看授权平台：`GET /v1/agents/platform-grants/{agent_id}`
+- 查看授权平台：`GET /v1/agents/platform-grants/{agent_id}`（需要 `Authorization: Bearer <admin_or_bound_hosted_token>`）
 - 撤销授权平台：`DELETE /v1/agents/platform-grants/{platform_aud}`
 - 刷新 public attestation：`POST /v1/attestations/public/issue`
-- 查询升级状态：`GET /v1/upgrades/requests/{upgrade_request_id}`
+- 查询升级状态：`GET /v1/upgrades/requests/{upgrade_request_id}`（需要 `Authorization: Bearer <admin_or_bound_hosted_token>`）
+- 对上述两个读接口，self-hosted 也可使用签名证明头：
+- `X-Rare-Agent-Id`
+- `X-Rare-Agent-Nonce`
+- `X-Rare-Agent-Issued-At`
+- `X-Rare-Agent-Expires-At`
+- `X-Rare-Agent-Signature`
+
+### Hosted signer 调用鉴权（新增）
+- 所有 `/v1/signer/*` 请求必须携带 `Authorization: Bearer <hosted_management_token>`。
+- token 与 `agent_id` 强绑定：`caller token` 对应的 agent 必须与请求体 `agent_id` 一致。
+- token 仅适用于 `hosted-signer` 账户；`self-hosted` 账户走本地签名。
+- token 有有效期（默认 30 天），过期时间为 `hosted_management_token_expires_at`。
+- 轮换 token：`POST /v1/signer/rotate_management_token`。
+- 吊销 token：`POST /v1/signer/revoke_management_token`。
 
 ## 8. CLI 对应命令
 ```bash
 rare register --name alice
+rare rotate-hosted-token
+rare revoke-hosted-token
 rare request-upgrade --level L1 --email alice@example.com
 rare request-upgrade --level L2
 rare start-social --request-id <id> --provider github

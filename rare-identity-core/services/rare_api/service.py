@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -13,7 +14,10 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 
 from rare_identity_protocol import (
     TokenValidationError,
+    ExpiringMap,
+    ExpiringSet,
     build_action_payload,
+    build_agent_auth_payload,
     build_auth_challenge_payload,
     build_full_attestation_issue_payload,
     build_platform_grant_payload,
@@ -23,7 +27,6 @@ from rare_identity_protocol import (
     decode_jws,
     generate_ed25519_keypair,
     generate_nonce,
-    issue_agent_delegation,
     issue_full_identity_attestation,
     issue_public_identity_attestation,
     issue_rare_delegation,
@@ -41,6 +44,12 @@ from rare_identity_protocol import (
 LEVELS = {"L0", "L1", "L2"}
 NEGATIVE_EVENT_CATEGORIES = {"spam", "fraud", "abuse", "policy_violation"}
 SOCIAL_PROVIDERS = {"x", "github"}
+MAX_SIGNED_TTL_SECONDS = 300
+MAX_DELEGATION_TTL_SECONDS = 3600
+DEFAULT_REPLAY_CACHE_CAPACITY = 50_000
+DEFAULT_SESSION_CACHE_CAPACITY = 20_000
+DEFAULT_CHALLENGE_CACHE_CAPACITY = 10_000
+DEFAULT_HOSTED_MANAGEMENT_TOKEN_TTL_SECONDS = 30 * 24 * 3600
 
 
 @dataclass
@@ -71,6 +80,13 @@ class HostedSessionRecord:
     aud: str
     private_key: Ed25519PrivateKey
     created_at: int
+    expires_at: int
+
+
+@dataclass
+class HostedManagementTokenRecord:
+    token_hash: str
+    issued_at: int
     expires_at: int
 
 
@@ -186,6 +202,14 @@ class RareService:
         magic_link_ttl_seconds: int = 600,
         oauth_state_ttl_seconds: int = 600,
         dns_txt_resolver: Callable[[str], list[str]] | None = None,
+        max_signed_ttl_seconds: int = MAX_SIGNED_TTL_SECONDS,
+        max_delegation_ttl_seconds: int = MAX_DELEGATION_TTL_SECONDS,
+        replay_cache_capacity: int = DEFAULT_REPLAY_CACHE_CAPACITY,
+        session_cache_capacity: int = DEFAULT_SESSION_CACHE_CAPACITY,
+        challenge_cache_capacity: int = DEFAULT_CHALLENGE_CACHE_CAPACITY,
+        hosted_management_token_ttl_seconds: int = DEFAULT_HOSTED_MANAGEMENT_TOKEN_TTL_SECONDS,
+        allow_local_upgrade_shortcuts: bool = False,
+        admin_token: str | None = None,
     ) -> None:
         self.issuer = issuer
         self.attestation_ttl_seconds = attestation_ttl_seconds
@@ -193,29 +217,50 @@ class RareService:
         self.upgrade_request_ttl_seconds = upgrade_request_ttl_seconds
         self.magic_link_ttl_seconds = magic_link_ttl_seconds
         self.oauth_state_ttl_seconds = oauth_state_ttl_seconds
+        self.max_signed_ttl_seconds = max_signed_ttl_seconds
+        self.max_delegation_ttl_seconds = max_delegation_ttl_seconds
+        if hosted_management_token_ttl_seconds <= 0:
+            raise ValueError("hosted_management_token_ttl_seconds must be greater than 0")
+        self.hosted_management_token_ttl_seconds = hosted_management_token_ttl_seconds
+        self.allow_local_upgrade_shortcuts = allow_local_upgrade_shortcuts
         self.dns_txt_resolver = dns_txt_resolver or (lambda _name: [])
+        self._admin_token = admin_token
 
         self.agents: dict[str, AgentRecord] = {}
         self.hosted_agent_private_keys: dict[str, Ed25519PrivateKey] = {}
-        self.hosted_session_keys: dict[str, HostedSessionRecord] = {}
+        self.hosted_management_tokens: dict[str, HostedManagementTokenRecord] = {}
+        self.hosted_session_keys: ExpiringMap[str, HostedSessionRecord] = ExpiringMap(
+            capacity=session_cache_capacity
+        )
 
         self.name_change_events: dict[str, list[int]] = {}
-        self.used_name_nonces: dict[str, int] = {}
-        self.used_action_nonces: dict[tuple[str, str], int] = {}
-        self.used_platform_grant_nonces: dict[tuple[str, str], int] = {}
-        self.used_full_issue_nonces: dict[tuple[str, str], int] = {}
-        self.seen_upgrade_nonces: dict[tuple[str, str], int] = {}
+        self.used_name_nonces: ExpiringSet[str] = ExpiringSet(capacity=replay_cache_capacity)
+        self.used_action_nonces: ExpiringSet[tuple[str, str]] = ExpiringSet(capacity=replay_cache_capacity)
+        self.used_agent_auth_nonces: ExpiringSet[tuple[str, str]] = ExpiringSet(capacity=replay_cache_capacity)
+        self.used_platform_grant_nonces: ExpiringSet[tuple[str, str]] = ExpiringSet(
+            capacity=replay_cache_capacity
+        )
+        self.used_full_issue_nonces: ExpiringSet[tuple[str, str]] = ExpiringSet(
+            capacity=replay_cache_capacity
+        )
+        self.seen_upgrade_nonces: ExpiringSet[tuple[str, str]] = ExpiringSet(capacity=replay_cache_capacity)
 
         self.identity_profiles: dict[str, IdentityProfileRecord] = {}
         self.identity_subscriptions: dict[str, dict[str, Any]] = {}
         self.platforms: dict[str, PlatformRecord] = {}
-        self.platform_register_challenges: dict[str, PlatformRegisterChallenge] = {}
+        self.platform_register_challenges: ExpiringMap[str, PlatformRegisterChallenge] = ExpiringMap(
+            capacity=challenge_cache_capacity
+        )
         self.agent_platform_grants: dict[tuple[str, str], AgentPlatformGrant] = {}
         self.platform_events: dict[tuple[str, str], PlatformNegativeEvent] = {}
-        self.seen_platform_jtis: dict[tuple[str, str], int] = {}
+        self.seen_platform_jtis: ExpiringSet[tuple[str, str]] = ExpiringSet(capacity=replay_cache_capacity)
         self.upgrade_requests: dict[str, UpgradeRequestRecord] = {}
-        self.upgrade_magic_links: dict[str, UpgradeMagicLinkRecord] = {}
-        self.upgrade_oauth_states: dict[str, UpgradeOAuthStateRecord] = {}
+        self.upgrade_magic_links: ExpiringMap[str, UpgradeMagicLinkRecord] = ExpiringMap(
+            capacity=challenge_cache_capacity
+        )
+        self.upgrade_oauth_states: ExpiringMap[str, UpgradeOAuthStateRecord] = ExpiringMap(
+            capacity=challenge_cache_capacity
+        )
 
         self.identity_keys: dict[str, SigningKey] = {}
         self.active_identity_kid = self._generate_identity_signing_key()
@@ -390,6 +435,8 @@ class RareService:
         signature_by_agent: str | None,
     ) -> dict:
         normalized_name = validate_name(name) if name else f"Agent-{generate_nonce(5)[:8]}"
+        hosted_management_token: str | None = None
+        hosted_management_token_expires_at: int | None = None
 
         if key_mode == "hosted-signer":
             if agent_public_key is not None:
@@ -397,6 +444,9 @@ class RareService:
             generated_private_key, generated_public_key = generate_ed25519_keypair()
             agent_id = generated_public_key
             self.hosted_agent_private_keys[agent_id] = load_private_key(generated_private_key)
+            hosted_management_token, hosted_management_token_expires_at = self._issue_hosted_management_token(
+                agent_id=agent_id
+            )
         elif key_mode == "self-hosted":
             if agent_public_key is None:
                 raise TokenValidationError("agent_public_key is required in self-hosted mode")
@@ -405,12 +455,12 @@ class RareService:
 
             load_public_key(agent_public_key)
             now = now_ts()
-            if issued_at > now + 30:
-                raise TokenValidationError("registration issued_at is too far in the future")
-            if expires_at < now - 30:
-                raise TokenValidationError("registration request has expired")
-            if expires_at <= issued_at:
-                raise TokenValidationError("registration expires_at must be greater than issued_at")
+            self._validate_signed_window(
+                issued_at=issued_at,
+                expires_at=expires_at,
+                now=now,
+                prefix="registration",
+            )
 
             registration_payload = build_register_payload(
                 agent_id=agent_public_key,
@@ -437,12 +487,16 @@ class RareService:
 
         attestation = self._issue_public_identity_attestation(existing)
 
-        return {
+        response = {
             "agent_id": existing.agent_id,
             "profile": {"name": existing.name},
             "public_identity_attestation": attestation,
             "key_mode": key_mode,
         }
+        if hosted_management_token is not None:
+            response["hosted_management_token"] = hosted_management_token
+            response["hosted_management_token_expires_at"] = hosted_management_token_expires_at
+        return response
 
     def issue_public_attestation(self, *, agent_id: str) -> dict:
         record = self.require_agent(agent_id)
@@ -493,22 +547,10 @@ class RareService:
                 request.last_transition_at = now
 
     def _cleanup_upgrade_magic_links(self, now: int) -> None:
-        expired_keys = [
-            token_hash
-            for token_hash, record in self.upgrade_magic_links.items()
-            if record.expires_at + 30 < now
-        ]
-        for token_hash in expired_keys:
-            del self.upgrade_magic_links[token_hash]
+        self.upgrade_magic_links.cleanup(now=now)
 
     def _cleanup_upgrade_oauth_states(self, now: int) -> None:
-        expired_keys = [
-            state
-            for state, record in self.upgrade_oauth_states.items()
-            if record.expires_at + 30 < now
-        ]
-        for state in expired_keys:
-            del self.upgrade_oauth_states[state]
+        self.upgrade_oauth_states.cleanup(now=now)
 
     def _require_upgrade_request(self, upgrade_request_id: str) -> UpgradeRequestRecord:
         now = now_ts()
@@ -542,6 +584,152 @@ class RareService:
             raise KeyError("agent not found")
         return record
 
+    def set_admin_token(self, token: str | None) -> None:
+        self._admin_token = token
+
+    def _hash_token(self, token: str) -> str:
+        return self._sha256_hex(token)
+
+    def _issue_hosted_management_token(self, *, agent_id: str) -> tuple[str, int]:
+        self._require_hosted_agent_private_key(agent_id)
+        now = now_ts()
+        token = generate_nonce(32)
+        expires_at = now + self.hosted_management_token_ttl_seconds
+        self.hosted_management_tokens[agent_id] = HostedManagementTokenRecord(
+            token_hash=self._hash_token(token),
+            issued_at=now,
+            expires_at=expires_at,
+        )
+        return token, expires_at
+
+    def authorize_hosted_management(self, *, agent_id: str, token: str) -> None:
+        self.require_agent(agent_id)
+        self._require_hosted_agent_private_key(agent_id)
+        token_record = self.hosted_management_tokens.get(agent_id)
+        if token_record is None:
+            raise PermissionError("hosted management token not provisioned")
+        now = now_ts()
+        if token_record.expires_at < now:
+            self.hosted_management_tokens.pop(agent_id, None)
+            raise PermissionError("hosted management token expired")
+        if not hmac.compare_digest(token_record.token_hash, self._hash_token(token)):
+            raise PermissionError("invalid hosted management token")
+
+    def authorize_self_hosted_management_proof(
+        self,
+        *,
+        agent_id: str,
+        operation: str,
+        resource_id: str,
+        nonce: str,
+        issued_at: int,
+        expires_at: int,
+        signature_by_agent: str,
+    ) -> None:
+        self.require_agent(agent_id)
+        if agent_id in self.hosted_agent_private_keys:
+            raise PermissionError("hosted-signer agent must use hosted management token")
+        now = now_ts()
+        self._validate_signed_window(
+            issued_at=issued_at,
+            expires_at=expires_at,
+            now=now,
+            prefix="agent auth",
+        )
+        cache_key = (agent_id, nonce)
+        self.used_agent_auth_nonces.cleanup(now=now)
+        if self.used_agent_auth_nonces.contains(cache_key):
+            raise TokenValidationError("nonce already used")
+        self.used_agent_auth_nonces.add(
+            key=cache_key,
+            expires_at=expires_at,
+            now=now,
+        )
+        payload = build_agent_auth_payload(
+            agent_id=agent_id,
+            operation=operation,
+            resource_id=resource_id,
+            nonce=nonce,
+            issued_at=issued_at,
+            expires_at=expires_at,
+        )
+        verify_detached(payload, signature_by_agent, load_public_key(agent_id))
+
+    def rotate_hosted_management_token(self, *, agent_id: str, token: str) -> dict[str, Any]:
+        self.authorize_hosted_management(agent_id=agent_id, token=token)
+        next_token, expires_at = self._issue_hosted_management_token(agent_id=agent_id)
+        return {
+            "agent_id": agent_id,
+            "hosted_management_token": next_token,
+            "hosted_management_token_expires_at": expires_at,
+        }
+
+    def revoke_hosted_management_token(self, *, agent_id: str, token: str) -> dict[str, Any]:
+        self.authorize_hosted_management(agent_id=agent_id, token=token)
+        self.hosted_management_tokens.pop(agent_id, None)
+        now = now_ts()
+        self.hosted_session_keys.cleanup(now=now)
+        for session_key, session in list(self.hosted_session_keys.items()):
+            if session.agent_id == agent_id:
+                self.hosted_session_keys.discard(session_key)
+        return {
+            "agent_id": agent_id,
+            "revoked": True,
+            "revoked_at": now,
+        }
+
+    def is_admin_token(self, *, token: str) -> bool:
+        if not self._admin_token:
+            return False
+        return hmac.compare_digest(self._admin_token, token)
+
+    def authorize_admin_or_hosted(self, *, agent_id: str, token: str) -> None:
+        if self.is_admin_token(token=token):
+            return
+        self.authorize_hosted_management(agent_id=agent_id, token=token)
+
+    def authorize_admin_or_hosted_or_agent_proof(
+        self,
+        *,
+        agent_id: str,
+        token: str | None,
+        operation: str,
+        resource_id: str,
+        proof_agent_id: str | None,
+        proof_nonce: str | None,
+        proof_issued_at: int | None,
+        proof_expires_at: int | None,
+        proof_signature_by_agent: str | None,
+    ) -> None:
+        if token is not None:
+            self.authorize_admin_or_hosted(agent_id=agent_id, token=token)
+            return
+        if not proof_agent_id:
+            raise PermissionError("agent proof agent_id is required")
+        if proof_agent_id != agent_id:
+            raise PermissionError("agent proof subject mismatch")
+        if not proof_nonce:
+            raise PermissionError("agent proof nonce is required")
+        if proof_issued_at is None or proof_expires_at is None:
+            raise PermissionError("agent proof signed window is required")
+        if not proof_signature_by_agent:
+            raise PermissionError("agent proof signature is required")
+        self.authorize_self_hosted_management_proof(
+            agent_id=agent_id,
+            operation=operation,
+            resource_id=resource_id,
+            nonce=proof_nonce,
+            issued_at=proof_issued_at,
+            expires_at=proof_expires_at,
+            signature_by_agent=proof_signature_by_agent,
+        )
+
+    def authorize_admin(self, *, token: str) -> None:
+        if not self._admin_token:
+            raise PermissionError("RARE_ADMIN_TOKEN is not configured")
+        if not self.is_admin_token(token=token):
+            raise PermissionError("invalid admin token")
+
     def _require_hosted_agent_private_key(self, agent_id: str) -> Ed25519PrivateKey:
         private_key = self.hosted_agent_private_keys.get(agent_id)
         if private_key is None:
@@ -570,17 +758,17 @@ class RareService:
         record = self.require_agent(agent_id)
         now = now_ts()
 
-        if issued_at > now + 30:
-            raise TokenValidationError("issued_at is too far in the future")
-        if expires_at < now - 30:
-            raise TokenValidationError("request has expired")
-        if expires_at <= issued_at:
-            raise TokenValidationError("expires_at must be greater than issued_at")
+        self._validate_signed_window(
+            issued_at=issued_at,
+            expires_at=expires_at,
+            now=now,
+            prefix="set_name",
+        )
 
-        self._cleanup_name_nonce_cache(now)
-        if nonce in self.used_name_nonces:
+        self.used_name_nonces.cleanup(now=now)
+        if self.used_name_nonces.contains(nonce):
             raise TokenValidationError("nonce already used")
-        self.used_name_nonces[nonce] = expires_at
+        self.used_name_nonces.add(key=nonce, expires_at=expires_at, now=now)
 
         payload = build_set_name_payload(
             agent_id=agent_id,
@@ -622,6 +810,7 @@ class RareService:
     ) -> dict:
         self.require_agent(agent_id)
         private_key = self._require_hosted_agent_private_key(agent_id)
+        self._validate_signer_ttl(ttl_seconds=ttl_seconds, prefix="set_name signer")
 
         issued_at = now_ts()
         expires_at = issued_at + ttl_seconds
@@ -645,32 +834,20 @@ class RareService:
             "signature_by_agent": signature,
         }
 
-    def _cleanup_nonce_cache(self, cache: dict[Any, int], now: int) -> None:
-        expired = [key for key, nonce_exp in cache.items() if nonce_exp + 30 < now]
-        for key in expired:
-            del cache[key]
-
-    def _cleanup_name_nonce_cache(self, now: int) -> None:
-        self._cleanup_nonce_cache(self.used_name_nonces, now)
-
     def _cleanup_session_cache(self, now: int) -> None:
-        expired_sessions = [
-            pubkey for pubkey, session in self.hosted_session_keys.items() if session.expires_at + 30 < now
-        ]
-        for pubkey in expired_sessions:
-            del self.hosted_session_keys[pubkey]
+        self.hosted_session_keys.cleanup(now=now)
 
     def _cleanup_action_nonce_cache(self, now: int) -> None:
-        self._cleanup_nonce_cache(self.used_action_nonces, now)
+        self.used_action_nonces.cleanup(now=now)
 
     def _cleanup_platform_grant_nonce_cache(self, now: int) -> None:
-        self._cleanup_nonce_cache(self.used_platform_grant_nonces, now)
+        self.used_platform_grant_nonces.cleanup(now=now)
 
     def _cleanup_full_issue_nonce_cache(self, now: int) -> None:
-        self._cleanup_nonce_cache(self.used_full_issue_nonces, now)
+        self.used_full_issue_nonces.cleanup(now=now)
 
     def _cleanup_upgrade_nonce_cache(self, now: int) -> None:
-        self._cleanup_nonce_cache(self.seen_upgrade_nonces, now)
+        self.seen_upgrade_nonces.cleanup(now=now)
 
     def prepare_auth(
         self,
@@ -684,14 +861,15 @@ class RareService:
         delegation_ttl_seconds: int = 3600,
     ) -> dict:
         self.require_agent(agent_id)
+        self._validate_delegation_ttl(ttl_seconds=delegation_ttl_seconds, prefix="prepare_auth")
 
         now = now_ts()
-        if issued_at > now + 30:
-            raise TokenValidationError("challenge issued_at too far in future")
-        if expires_at < now - 30:
-            raise TokenValidationError("challenge expired")
-        if expires_at <= issued_at:
-            raise TokenValidationError("challenge expires_at must be greater than issued_at")
+        self._validate_signed_window(
+            issued_at=issued_at,
+            expires_at=expires_at,
+            now=now,
+            prefix="challenge",
+        )
 
         session_private_b64, session_pubkey = generate_ed25519_keypair()
         session_private_key = load_private_key(session_private_b64)
@@ -716,13 +894,18 @@ class RareService:
         )
 
         session_exp = now + delegation_ttl_seconds
-        self.hosted_session_keys[session_pubkey] = HostedSessionRecord(
-            session_pubkey=session_pubkey,
-            agent_id=agent_id,
-            aud=aud,
-            private_key=session_private_key,
-            created_at=now,
+        self.hosted_session_keys.set(
+            key=session_pubkey,
+            value=HostedSessionRecord(
+                session_pubkey=session_pubkey,
+                agent_id=agent_id,
+                aud=aud,
+                private_key=session_private_key,
+                created_at=now,
+                expires_at=session_exp,
+            ),
             expires_at=session_exp,
+            now=now,
         )
 
         return {
@@ -762,17 +945,17 @@ class RareService:
         if session.expires_at < now - 30:
             raise TokenValidationError("session key expired")
 
-        if issued_at > now + 30:
-            raise TokenValidationError("action issued_at too far in future")
-        if expires_at < now - 30:
-            raise TokenValidationError("action expired")
-        if expires_at <= issued_at:
-            raise TokenValidationError("action expires_at must be greater than issued_at")
+        self._validate_signed_window(
+            issued_at=issued_at,
+            expires_at=expires_at,
+            now=now,
+            prefix="action",
+        )
 
         nonce_key = (session_pubkey, nonce)
-        if nonce_key in self.used_action_nonces:
+        if self.used_action_nonces.contains(nonce_key):
             raise TokenValidationError("action nonce already used")
-        self.used_action_nonces[nonce_key] = expires_at
+        self.used_action_nonces.add(key=nonce_key, expires_at=expires_at, now=now)
 
         sign_input = build_action_payload(
             aud=aud,
@@ -797,94 +980,6 @@ class RareService:
             "signature_by_session": signature,
         }
 
-    def bind_owner(self, *, agent_id: str, owner_id: str, org_id: str | None) -> dict:
-        record = self.require_agent(agent_id)
-        record.owner_id = owner_id
-        record.org_id = org_id
-        if record.level == "L0":
-            record.level = "L1"
-
-        profile = self._ensure_identity_profile(agent_id)
-        profile.labels = sorted(set(profile.labels + ["owner-linked"]))
-        profile.version += 1
-        profile.updated_at = now_ts()
-
-        return {
-            "agent_id": record.agent_id,
-            "level": record.level,
-            "public_identity_attestation": self._issue_public_identity_attestation(record),
-        }
-
-    def connect_twitter(self, *, agent_id: str, user_id: str, handle: str) -> dict:
-        record = self.require_agent(agent_id)
-        if not record.owner_id:
-            raise PermissionError("bind_owner required before linking social assets")
-        record.twitter = {"user_id": user_id, "handle": handle}
-
-        profile = self._ensure_identity_profile(agent_id)
-        profile.labels = sorted(set(profile.labels + ["twitter-linked"]))
-        profile.version += 1
-        profile.updated_at = now_ts()
-
-        return {
-            "agent_id": record.agent_id,
-            "twitter": record.twitter,
-            "public_identity_attestation": self._issue_public_identity_attestation(record),
-        }
-
-    def connect_github(self, *, agent_id: str, github_id: str, login: str) -> dict:
-        record = self.require_agent(agent_id)
-        if not record.owner_id:
-            raise PermissionError("bind_owner required before linking social assets")
-        record.github = {"id": github_id, "login": login}
-
-        profile = self._ensure_identity_profile(agent_id)
-        profile.labels = sorted(set(profile.labels + ["github-linked"]))
-        profile.version += 1
-        profile.updated_at = now_ts()
-
-        return {
-            "agent_id": record.agent_id,
-            "github": record.github,
-            "public_identity_attestation": self._issue_public_identity_attestation(record),
-        }
-
-    def upgrade_attestation(self, *, agent_id: str, target_level: str | None) -> dict:
-        record = self.require_agent(agent_id)
-
-        desired = target_level
-        if desired is None:
-            if record.owner_id and (record.twitter or record.github):
-                desired = "L2"
-            elif record.owner_id:
-                desired = "L1"
-            else:
-                desired = "L0"
-
-        if desired not in LEVELS:
-            raise TokenValidationError("target_level must be one of L0/L1/L2")
-
-        if desired == "L1" and not record.owner_id:
-            raise PermissionError("L1 requires owner binding")
-        if desired == "L2":
-            if not record.owner_id:
-                raise PermissionError("L2 requires owner binding")
-            if not (record.twitter or record.github):
-                raise PermissionError("L2 requires at least one linked social asset")
-
-        record.level = desired
-
-        profile = self._ensure_identity_profile(agent_id)
-        profile.labels = sorted(set(profile.labels + [f"level-{desired.lower()}"]))
-        profile.version += 1
-        profile.updated_at = now_ts()
-
-        return {
-            "agent_id": record.agent_id,
-            "level": record.level,
-            "public_identity_attestation": self._issue_public_identity_attestation(record),
-        }
-
     def sign_delegation(
         self,
         *,
@@ -896,6 +991,7 @@ class RareService:
     ) -> dict:
         self.require_agent(agent_id)
         load_public_key(session_pubkey)
+        self._validate_delegation_ttl(ttl_seconds=ttl_seconds, prefix="sign_delegation")
 
         token = issue_rare_delegation(
             agent_id=agent_id,
@@ -909,30 +1005,6 @@ class RareService:
         )
         return {"delegation_token": token}
 
-    def sign_delegation_with_hosted_agent_key(
-        self,
-        *,
-        agent_id: str,
-        session_pubkey: str,
-        aud: str,
-        scope: Iterable[str],
-        ttl_seconds: int,
-    ) -> dict:
-        self.require_agent(agent_id)
-        private_key = self._require_hosted_agent_private_key(agent_id)
-
-        token = issue_agent_delegation(
-            agent_id=agent_id,
-            session_pubkey=session_pubkey,
-            aud=aud,
-            scope=scope,
-            signer_private_key=private_key,
-            kid=f"agent-{agent_id[:8]}",
-            ttl_seconds=ttl_seconds,
-            jti=generate_nonce(12),
-        )
-        return {"delegation_token": token}
-
     def sign_platform_grant(
         self,
         *,
@@ -942,6 +1014,7 @@ class RareService:
     ) -> dict[str, Any]:
         self.require_agent(agent_id)
         private_key = self._require_hosted_agent_private_key(agent_id)
+        self._validate_signer_ttl(ttl_seconds=ttl_seconds, prefix="sign_platform_grant")
         issued_at = now_ts()
         expires_at = issued_at + ttl_seconds
         nonce = generate_nonce(10)
@@ -971,6 +1044,7 @@ class RareService:
     ) -> dict[str, Any]:
         self.require_agent(agent_id)
         private_key = self._require_hosted_agent_private_key(agent_id)
+        self._validate_signer_ttl(ttl_seconds=ttl_seconds, prefix="sign_full_attestation_issue")
         issued_at = now_ts()
         expires_at = issued_at + ttl_seconds
         nonce = generate_nonce(10)
@@ -1003,6 +1077,7 @@ class RareService:
             raise TokenValidationError("target_level must be L1 or L2")
         self.require_agent(agent_id)
         private_key = self._require_hosted_agent_private_key(agent_id)
+        self._validate_signer_ttl(ttl_seconds=ttl_seconds, prefix="sign_upgrade_request")
         issued_at = now_ts()
         expires_at = issued_at + ttl_seconds
         nonce = generate_nonce(10)
@@ -1035,9 +1110,9 @@ class RareService:
     ) -> None:
         self._cleanup_upgrade_nonce_cache(now)
         nonce_key = (agent_id, nonce)
-        if nonce_key in self.seen_upgrade_nonces:
+        if self.seen_upgrade_nonces.contains(nonce_key):
             raise TokenValidationError("upgrade nonce already used")
-        self.seen_upgrade_nonces[nonce_key] = expires_at
+        self.seen_upgrade_nonces.add(key=nonce_key, expires_at=expires_at, now=now)
 
     def create_upgrade_request(
         self,
@@ -1112,6 +1187,57 @@ class RareService:
         request = self._require_upgrade_request(upgrade_request_id)
         return self._upgrade_status_payload(request)
 
+    def get_upgrade_request_authorized(
+        self,
+        *,
+        upgrade_request_id: str,
+        token: str | None,
+        proof_agent_id: str | None,
+        proof_nonce: str | None,
+        proof_issued_at: int | None,
+        proof_expires_at: int | None,
+        proof_signature_by_agent: str | None,
+    ) -> dict[str, Any]:
+        request = self._require_upgrade_request(upgrade_request_id)
+        self.authorize_admin_or_hosted_or_agent_proof(
+            agent_id=request.agent_id,
+            token=token,
+            operation="upgrade_status",
+            resource_id=upgrade_request_id,
+            proof_agent_id=proof_agent_id,
+            proof_nonce=proof_nonce,
+            proof_issued_at=proof_issued_at,
+            proof_expires_at=proof_expires_at,
+            proof_signature_by_agent=proof_signature_by_agent,
+        )
+        return self._upgrade_status_payload(request)
+
+    def authorize_upgrade_request_operation(
+        self,
+        *,
+        upgrade_request_id: str,
+        token: str | None,
+        operation: str,
+        resource_id: str,
+        proof_agent_id: str | None,
+        proof_nonce: str | None,
+        proof_issued_at: int | None,
+        proof_expires_at: int | None,
+        proof_signature_by_agent: str | None,
+    ) -> None:
+        request = self._require_upgrade_request(upgrade_request_id)
+        self.authorize_admin_or_hosted_or_agent_proof(
+            agent_id=request.agent_id,
+            token=token,
+            operation=operation,
+            resource_id=resource_id,
+            proof_agent_id=proof_agent_id,
+            proof_nonce=proof_nonce,
+            proof_issued_at=proof_issued_at,
+            proof_expires_at=proof_expires_at,
+            proof_signature_by_agent=proof_signature_by_agent,
+        )
+
     def send_upgrade_l1_email_link(self, *, upgrade_request_id: str) -> dict[str, Any]:
         now = now_ts()
         self._cleanup_upgrade_magic_links(now)
@@ -1130,15 +1256,22 @@ class RareService:
             upgrade_request_id=upgrade_request_id,
             expires_at=now + self.magic_link_ttl_seconds,
         )
-        self.upgrade_magic_links[token_hash] = record
-        return {
+        self.upgrade_magic_links.set(
+            key=token_hash,
+            value=record,
+            expires_at=record.expires_at,
+            now=now,
+        )
+        response = {
             "upgrade_request_id": upgrade_request_id,
             "sent": True,
             "expires_at": record.expires_at,
-            # v1 local-stub only: expose raw token for tests/dev integration
-            "token": raw_token,
-            "magic_link": f"https://rare.local/v1/upgrades/l1/email/verify?token={raw_token}",
         }
+        if self.allow_local_upgrade_shortcuts:
+            # local stub mode only: expose raw token for tests/dev integration
+            response["token"] = raw_token
+            response["magic_link"] = f"https://rare.local/v1/upgrades/l1/email/verify?token={raw_token}"
+        return response
 
     def _apply_upgraded_level(self, request: UpgradeRequestRecord) -> dict[str, Any]:
         record = self.require_agent(request.agent_id)
@@ -1232,7 +1365,12 @@ class RareService:
             provider=normalized_provider,
             expires_at=now + self.oauth_state_ttl_seconds,
         )
-        self.upgrade_oauth_states[state] = state_record
+        self.upgrade_oauth_states.set(
+            key=state,
+            value=state_record,
+            expires_at=state_record.expires_at,
+            now=now,
+        )
         return {
             "upgrade_request_id": upgrade_request_id,
             "provider": normalized_provider,
@@ -1295,6 +1433,8 @@ class RareService:
         provider: str,
         provider_user_snapshot: dict[str, Any],
     ) -> dict[str, Any]:
+        if not self.allow_local_upgrade_shortcuts:
+            raise PermissionError("local social complete shortcut is disabled")
         normalized_provider = provider.strip().lower()
         if normalized_provider not in SOCIAL_PROVIDERS:
             raise TokenValidationError("provider must be x or github")
@@ -1313,9 +1453,7 @@ class RareService:
         return self._apply_upgraded_level(request)
 
     def _cleanup_platform_register_challenges(self, now: int) -> None:
-        for challenge in self.platform_register_challenges.values():
-            if challenge.status == "issued" and challenge.expires_at + 30 < now:
-                challenge.status = "expired"
+        self.platform_register_challenges.cleanup(now=now)
 
     def issue_platform_register_challenge(self, *, platform_aud: str, domain: str) -> dict[str, Any]:
         if not platform_aud.strip():
@@ -1339,7 +1477,12 @@ class RareService:
             txt_value=txt_value,
             expires_at=expires_at,
         )
-        self.platform_register_challenges[challenge_id] = challenge
+        self.platform_register_challenges.set(
+            key=challenge_id,
+            value=challenge,
+            expires_at=expires_at,
+            now=now,
+        )
         return {
             "challenge_id": challenge.challenge_id,
             "txt_name": challenge.txt_name,
@@ -1427,6 +1570,26 @@ class RareService:
             raise TokenValidationError(f"{prefix} request expired")
         if expires_at <= issued_at:
             raise TokenValidationError(f"{prefix} expires_at must be greater than issued_at")
+        if expires_at - issued_at > self.max_signed_ttl_seconds:
+            raise TokenValidationError(
+                f"{prefix} ttl exceeds max {self.max_signed_ttl_seconds} seconds"
+            )
+
+    def _validate_signer_ttl(self, *, ttl_seconds: int, prefix: str) -> None:
+        if ttl_seconds <= 0:
+            raise TokenValidationError(f"{prefix} ttl_seconds must be greater than 0")
+        if ttl_seconds > self.max_signed_ttl_seconds:
+            raise TokenValidationError(
+                f"{prefix} ttl_seconds exceeds max {self.max_signed_ttl_seconds} seconds"
+            )
+
+    def _validate_delegation_ttl(self, *, ttl_seconds: int, prefix: str) -> None:
+        if ttl_seconds <= 0:
+            raise TokenValidationError(f"{prefix} ttl_seconds must be greater than 0")
+        if ttl_seconds > self.max_delegation_ttl_seconds:
+            raise TokenValidationError(
+                f"{prefix} ttl_seconds exceeds max {self.max_delegation_ttl_seconds} seconds"
+            )
 
     def _consume_platform_grant_nonce(
         self,
@@ -1435,13 +1598,13 @@ class RareService:
         nonce: str,
         expires_at: int,
         now: int,
-        cache: dict[tuple[str, str], int],
+        cache: ExpiringSet[tuple[str, str]],
     ) -> None:
-        self._cleanup_nonce_cache(cache, now)
+        cache.cleanup(now=now)
         nonce_key = (agent_id, nonce)
-        if nonce_key in cache:
+        if cache.contains(nonce_key):
             raise TokenValidationError("nonce already used")
-        cache[nonce_key] = expires_at
+        cache.add(key=nonce_key, expires_at=expires_at, now=now)
 
     def _require_registered_platform(self, platform_aud: str) -> PlatformRecord:
         platform = self.platforms.get(platform_aud)
@@ -1640,7 +1803,7 @@ class RareService:
         raise TokenValidationError("unknown platform key id")
 
     def _cleanup_seen_platform_jtis(self, now: int) -> None:
-        self._cleanup_nonce_cache(self.seen_platform_jtis, now)
+        self.seen_platform_jtis.cleanup(now=now)
 
     def _apply_negative_event_to_profile(self, event: PlatformNegativeEvent) -> None:
         profile = self._ensure_identity_profile(event.agent_id)
@@ -1713,9 +1876,9 @@ class RareService:
             raise TokenValidationError("platform event jti missing")
         self._cleanup_seen_platform_jtis(now)
         replay_key = (platform.platform_id, jti)
-        if replay_key in self.seen_platform_jtis:
+        if self.seen_platform_jtis.contains(replay_key):
             raise TokenValidationError("platform event jti replay detected")
-        self.seen_platform_jtis[replay_key] = exp
+        self.seen_platform_jtis.add(key=replay_key, expires_at=exp, now=now)
 
         events = payload.get("events")
         if not isinstance(events, list):

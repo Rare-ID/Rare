@@ -19,6 +19,7 @@ This document explains what a platform must do to integrate with Rare, and how `
 1. Verify `delegation_token`:
 - `aud` must equal the platform audience.
 - `scope` must include `login` (action scopes can extend to `post/comment`).
+- `jti` must exist and be a non-empty string (missing `jti` must be rejected).
 - `exp` must be valid and signature must verify.
 2. Verify identity attestation:
 - Accept only `rare.identity.public+jws` and `rare.identity.full+jws`.

@@ -19,6 +19,7 @@
 1. 校验 `delegation_token`：
 - `aud` 必须等于本平台 aud。
 - `scope` 覆盖 `login`（动作接口可扩展 post/comment）。
+- `jti` 必须存在且为字符串（缺失直接拒绝）。
 - `exp` 与签名有效。
 2. 校验 identity attestation：
 - 支持 `rare.identity.public+jws` / `rare.identity.full+jws`。

@@ -92,7 +92,7 @@ def verify_identity_attestation(
     if level not in {"L0", "L1", "L2"}:
         raise TokenValidationError("invalid identity level")
 
-    now = current_ts or now_ts()
+    now = now_ts() if current_ts is None else current_ts
     iat = payload.get("iat")
     exp = payload.get("exp")
 
@@ -157,11 +157,14 @@ def verify_delegation_token(
     if not isinstance(session_pubkey, str):
         raise TokenValidationError("delegation missing session_pubkey")
 
-    now = current_ts or now_ts()
+    now = now_ts() if current_ts is None else current_ts
     iat = payload.get("iat")
     exp = payload.get("exp")
+    jti = payload.get("jti")
     if not isinstance(iat, int) or not isinstance(exp, int):
         raise TokenValidationError("delegation timestamps must be integers")
+    if not isinstance(jti, str) or not jti.strip():
+        raise TokenValidationError("delegation jti missing")
     if iat - clock_skew_seconds > now:
         raise TokenValidationError("delegation token not yet valid")
     if exp + clock_skew_seconds < now:

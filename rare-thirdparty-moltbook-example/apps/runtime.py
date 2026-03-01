@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from rare_api.main import create_app as create_rare_app
 from rare_api.service import RareService
 
@@ -8,12 +10,22 @@ from moltbook_api.main import create_app as create_platform_app
 from moltbook_api.service import MoltbookService
 
 
+def _env_bool(name: str, *, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def create_runtime(
     *,
     aud: str = "platform",
     challenge_ttl_seconds: int = 120,
+    allow_local_upgrade_shortcuts: bool | None = None,
 ) -> tuple[RareService, MoltbookService, object, object]:
-    rare_service = RareService()
+    if allow_local_upgrade_shortcuts is None:
+        allow_local_upgrade_shortcuts = _env_bool("RARE_ALLOW_LOCAL_UPGRADE_SHORTCUTS", default=False)
+    rare_service = RareService(allow_local_upgrade_shortcuts=allow_local_upgrade_shortcuts)
 
     key_cache = RareKeyCache(
         initial_jwks=rare_service.get_jwks(),

@@ -31,14 +31,17 @@ Define platform registration, full-attestation enablement, and negative-event in
 - `POST /v1/agents/platform-grants`
 - `DELETE /v1/agents/platform-grants/{platform_aud}`
 - Signed input: `rare-grant-v1:{agent_id}:{platform_aud}:{nonce}:{issued_at}:{expires_at}`
+- Signed window policy: `expires_at - issued_at <= 300` seconds
 - Grants are long-lived until revoked.
 
 ### Grant list
 - `GET /v1/agents/platform-grants/{agent_id}`
+- Auth: `Authorization: Bearer <admin_or_bound_hosted_token>`
 
 ### Full attestation issue
 - Endpoint: `POST /v1/attestations/full/issue`
 - Signed input: `rare-full-att-v1:{agent_id}:{platform_aud}:{nonce}:{issued_at}:{expires_at}`
+- Signed window policy: `expires_at - issued_at <= 300` seconds
 - Preconditions:
   - platform is registered and active
   - grant exists and not revoked
@@ -57,9 +60,12 @@ Define platform registration, full-attestation enablement, and negative-event in
 ### L1 email upgrade (magic link)
 - `POST /v1/upgrades/requests`
   - signed input: `rare-upgrade-v1:{agent_id}:{target_level}:{request_id}:{nonce}:{issued_at}:{expires_at}`
+  - signed window policy: `expires_at - issued_at <= 300` seconds
   - `target_level=L1` requires `contact_email`
 - `POST /v1/upgrades/l1/email/send-link`
   - sends one-time magic link token (v1 local stub returns token in response)
+  - Auth: `Authorization: Bearer <admin_or_bound_hosted_token>` or self-hosted signed proof headers
+  - Raw token is returned only when `RARE_ALLOW_LOCAL_UPGRADE_SHORTCUTS=1`
 - `GET /v1/upgrades/l1/email/verify?token=...`
   - verifies token and auto-upgrades to `L1`
   - sets `owner_id=email:<sha256(lower(email))>`
@@ -70,15 +76,25 @@ Define platform registration, full-attestation enablement, and negative-event in
 - `POST /v1/upgrades/l2/social/start`
   - input: `upgrade_request_id`, `provider=x|github`
   - output: `authorize_url`, `state`
+  - Auth: `Authorization: Bearer <admin_or_bound_hosted_token>` or self-hosted signed proof headers
 - `GET /v1/upgrades/l2/social/callback`
   - input: `provider`, `code`, `state`
   - verifies oauth state and auto-upgrades to `L2`
 - `POST /v1/upgrades/l2/social/complete`
   - local integration shortcut for passing provider snapshot directly
+  - Auth: `Authorization: Bearer <admin_or_bound_hosted_token>` or self-hosted signed proof headers
+  - Disabled by default; enable only with `RARE_ALLOW_LOCAL_UPGRADE_SHORTCUTS=1`
 
 ### Shared status query
 - `GET /v1/upgrades/requests/{upgrade_request_id}`
   - returns current state and next step
+  - Auth: `Authorization: Bearer <admin_or_bound_hosted_token>`
+  - Self-hosted alternative headers:
+    - `X-Rare-Agent-Id`
+    - `X-Rare-Agent-Nonce`
+    - `X-Rare-Agent-Issued-At`
+    - `X-Rare-Agent-Expires-At`
+    - `X-Rare-Agent-Signature`
 
 ## Platform event token (negative only in v1)
 
@@ -92,7 +108,7 @@ Define platform registration, full-attestation enablement, and negative-event in
   - `ver=1`
   - `iss=<platform_id>`
   - `aud=rare.identity-library`
-  - `iat`, `exp`, `jti`
+  - `iat`, `exp`, `jti` (`jti` is mandatory)
   - `events[]`
 
 ### Allowed categories
@@ -114,3 +130,14 @@ Define platform registration, full-attestation enablement, and negative-event in
   - update `IdentityProfile.risk_score`
   - update `labels` (e.g. `abuse-reported`, `fraud-risk`)
   - update `metadata.platform_event_counts`
+
+## Hosted signer API security
+- All `/v1/signer/*` endpoints require `Authorization: Bearer <hosted_management_token>`.
+- `hosted_management_token` is issued once at hosted registration (`POST /v1/agents/self_register`).
+- Registration response includes `hosted_management_token_expires_at`.
+- Token is bound to one hosted `agent_id`; token owner must match request payload `agent_id`.
+- Signer request `ttl_seconds` is capped at 300 seconds.
+- Hosted management token has finite TTL (default 30 days).
+- Token lifecycle management:
+  - Rotate: `POST /v1/signer/rotate_management_token`
+  - Revoke: `POST /v1/signer/revoke_management_token`

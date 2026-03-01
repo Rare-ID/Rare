@@ -18,6 +18,16 @@
     },
     "expected": "rare-name-v1:agent_pubkey_abc:Alice:n-1:1700000000:1700000100"
   },
+  "set_name_nfkc_trim": {
+    "input": {
+      "agent_id": "agent_pubkey_abc",
+      "name": "  Ａｌｉｃｅ  ",
+      "nonce": "n-2",
+      "issued_at": 1700000001,
+      "expires_at": 1700000101
+    },
+    "expected": "rare-name-v1:agent_pubkey_abc:Alice:n-2:1700000001:1700000101"
+  },
   "register": {
     "input": {
       "agent_id": "agent_pubkey_abc",
@@ -27,6 +37,16 @@
       "expires_at": 1700000120
     },
     "expected": "rare-register-v1:agent_pubkey_abc:Alice:r-1:1700000000:1700000120"
+  },
+  "register_nfkc_trim": {
+    "input": {
+      "agent_id": "agent_pubkey_abc",
+      "name": "  Ａｌｉｃｅ  ",
+      "nonce": "r-2",
+      "issued_at": 1700000001,
+      "expires_at": 1700000121
+    },
+    "expected": "rare-register-v1:agent_pubkey_abc:Alice:r-2:1700000001:1700000121"
   },
   "platform_grant": {
     "input": {

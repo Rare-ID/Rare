@@ -25,8 +25,20 @@ def test_rip_v1_signing_input_vectors() -> None:
     set_name = vectors["set_name"]
     assert build_set_name_payload(**set_name["input"]) == set_name["expected"]
 
+    set_name_nfkc_trim = vectors["set_name_nfkc_trim"]
+    assert (
+        build_set_name_payload(**set_name_nfkc_trim["input"])
+        == set_name_nfkc_trim["expected"]
+    )
+
     register = vectors["register"]
     assert build_register_payload(**register["input"]) == register["expected"]
+
+    register_nfkc_trim = vectors["register_nfkc_trim"]
+    assert (
+        build_register_payload(**register_nfkc_trim["input"])
+        == register_nfkc_trim["expected"]
+    )
 
     platform_grant = vectors["platform_grant"]
     assert build_platform_grant_payload(**platform_grant["input"]) == platform_grant["expected"]
