@@ -70,3 +70,18 @@ def build_upgrade_request_payload(
         f"rare-upgrade-v1:{agent_id}:{target_level}:"
         f"{request_id}:{nonce}:{issued_at}:{expires_at}"
     )
+
+
+def build_agent_auth_payload(
+    *,
+    agent_id: str,
+    operation: str,
+    resource_id: str,
+    nonce: str,
+    issued_at: int,
+    expires_at: int,
+) -> str:
+    return (
+        f"rare-agent-auth-v1:{agent_id}:{operation}:{resource_id}:"
+        f"{nonce}:{issued_at}:{expires_at}"
+    )

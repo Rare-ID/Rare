@@ -4,7 +4,7 @@ from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from moltbook_api.service import MoltbookService
-from rare_identity_protocol.errors import ProtocolError, SignatureError
+from rare_identity_protocol.errors import ProtocolError, ResourceLimitError, SignatureError
 
 
 class AuthChallengeRequest(BaseModel):
@@ -58,6 +58,8 @@ def _raise_http(exc: Exception) -> None:
     if isinstance(exc, PermissionError):
         status = 429 if "rate limit" in str(exc).lower() else 403
         raise HTTPException(status_code=status, detail=str(exc)) from exc
+    if isinstance(exc, ResourceLimitError):
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
     if isinstance(exc, ProtocolError):
         status = 409 if "nonce" in str(exc).lower() else 400
         raise HTTPException(status_code=status, detail=str(exc)) from exc

@@ -7,6 +7,8 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from rare_identity_protocol import (
     TokenValidationError,
+    ExpiringMap,
+    ExpiringSet,
     build_action_payload,
     build_auth_challenge_payload,
     decode_jws,
@@ -36,6 +38,11 @@ LEVEL_RATE_LIMITS = {
     },
 }
 
+DEFAULT_REPLAY_CACHE_CAPACITY = 50_000
+DEFAULT_SESSION_CACHE_CAPACITY = 20_000
+DEFAULT_CHALLENGE_CACHE_CAPACITY = 10_000
+MAX_SIGNED_TTL_SECONDS = 300
+
 
 @dataclass
 class ChallengeRecord:
@@ -64,13 +71,22 @@ class MoltbookService:
     rare_signer_public_key_provider: Callable[[], Ed25519PublicKey | None]
     challenge_ttl_seconds: int = 120
     session_ttl_seconds: int = 3600
-    challenges: dict[str, ChallengeRecord] = field(default_factory=dict)
-    seen_delegation_jtis: dict[str, int] = field(default_factory=dict)
-    sessions: dict[str, SessionRecord] = field(default_factory=dict)
+    replay_cache_capacity: int = DEFAULT_REPLAY_CACHE_CAPACITY
+    session_cache_capacity: int = DEFAULT_SESSION_CACHE_CAPACITY
+    challenge_cache_capacity: int = DEFAULT_CHALLENGE_CACHE_CAPACITY
+    challenges: ExpiringMap[str, ChallengeRecord] = field(init=False)
+    seen_delegation_jtis: ExpiringSet[str] = field(init=False)
+    sessions: ExpiringMap[str, SessionRecord] = field(init=False)
     action_events: dict[tuple[str, str], list[int]] = field(default_factory=dict)
-    used_action_nonces: dict[tuple[str, str], int] = field(default_factory=dict)
+    used_action_nonces: ExpiringSet[tuple[str, str]] = field(init=False)
     posts: list[dict] = field(default_factory=list)
     comments: list[dict] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        self.challenges = ExpiringMap(capacity=self.challenge_cache_capacity)
+        self.seen_delegation_jtis = ExpiringSet(capacity=self.replay_cache_capacity)
+        self.sessions = ExpiringMap(capacity=self.session_cache_capacity)
+        self.used_action_nonces = ExpiringSet(capacity=self.replay_cache_capacity)
 
     def issue_challenge(self) -> dict:
         nonce = generate_nonce(18)
@@ -81,7 +97,7 @@ class MoltbookService:
             issued_at=now,
             expires_at=now + self.challenge_ttl_seconds,
         )
-        self.challenges[nonce] = record
+        self.challenges.set(key=nonce, value=record, expires_at=record.expires_at, now=now)
         return {
             "nonce": record.nonce,
             "aud": record.aud,
@@ -105,14 +121,10 @@ class MoltbookService:
         return record
 
     def _cleanup_seen_jtis(self, now: int) -> None:
-        expired = [jti for jti, exp in self.seen_delegation_jtis.items() if exp + 30 < now]
-        for jti in expired:
-            del self.seen_delegation_jtis[jti]
+        self.seen_delegation_jtis.cleanup(now=now)
 
     def _cleanup_action_nonces(self, now: int) -> None:
-        expired = [key for key, exp in self.used_action_nonces.items() if exp + 30 < now]
-        for key in expired:
-            del self.used_action_nonces[key]
+        self.used_action_nonces.cleanup(now=now)
 
     def complete_auth(
         self,
@@ -169,12 +181,14 @@ class MoltbookService:
         now = now_ts()
         self._cleanup_seen_jtis(now)
         jti = delegation_payload.get("jti")
-        if isinstance(jti, str):
-            if jti in self.seen_delegation_jtis:
-                raise TokenValidationError("delegation token replay detected")
-            exp = delegation_payload.get("exp")
-            if isinstance(exp, int):
-                self.seen_delegation_jtis[jti] = exp
+        if not isinstance(jti, str) or not jti.strip():
+            raise TokenValidationError("delegation token jti missing")
+        if self.seen_delegation_jtis.contains(jti):
+            raise TokenValidationError("delegation token replay detected")
+        exp = delegation_payload.get("exp")
+        if not isinstance(exp, int):
+            raise TokenValidationError("delegation token exp missing")
+        self.seen_delegation_jtis.add(key=jti, expires_at=exp, now=now)
 
         level = identity_payload.get("lvl")
         if level not in LEVEL_RATE_LIMITS:
@@ -199,7 +213,7 @@ class MoltbookService:
             created_at=now,
             expires_at=now + self.session_ttl_seconds,
         )
-        self.sessions[session_token] = session
+        self.sessions.set(key=session_token, value=session, expires_at=session.expires_at, now=now)
 
         return {
             "session_token": session_token,
@@ -215,7 +229,7 @@ class MoltbookService:
             raise PermissionError("invalid session token")
         now = now_ts()
         if session.expires_at < now:
-            del self.sessions[token]
+            self.sessions.discard(token)
             raise PermissionError("session expired")
         return session
 
@@ -250,11 +264,13 @@ class MoltbookService:
             raise TokenValidationError("action expired")
         if expires_at <= issued_at:
             raise TokenValidationError("action expires_at must be greater than issued_at")
+        if expires_at - issued_at > MAX_SIGNED_TTL_SECONDS:
+            raise TokenValidationError(f"action ttl exceeds max {MAX_SIGNED_TTL_SECONDS} seconds")
 
         nonce_key = (session.token, nonce)
-        if nonce_key in self.used_action_nonces:
+        if self.used_action_nonces.contains(nonce_key):
             raise TokenValidationError("action nonce already consumed")
-        self.used_action_nonces[nonce_key] = expires_at
+        self.used_action_nonces.add(key=nonce_key, expires_at=expires_at, now=now)
 
         signing_input = build_action_payload(
             aud=self.aud,

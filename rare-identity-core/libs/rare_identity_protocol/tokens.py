@@ -5,6 +5,7 @@ from typing import Iterable
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from rare_identity_protocol.crypto import now_ts, sign_jws
+from rare_identity_protocol.errors import TokenValidationError
 
 
 def _build_identity_claims(
@@ -167,8 +168,10 @@ def issue_agent_delegation(
     signer_private_key: Ed25519PrivateKey,
     kid: str,
     ttl_seconds: int = 3600,
-    jti: str | None = None,
+    jti: str,
 ) -> str:
+    if not isinstance(jti, str) or not jti.strip():
+        raise TokenValidationError("delegation jti is required")
     iat = now_ts()
     payload = {
         "typ": "rare.delegation",
@@ -182,8 +185,7 @@ def issue_agent_delegation(
         "exp": iat + ttl_seconds,
         "act": "delegated_by_agent",
     }
-    if jti:
-        payload["jti"] = jti
+    payload["jti"] = jti
 
     return sign_jws(
         payload=payload,
@@ -202,8 +204,10 @@ def issue_rare_delegation(
     signer_private_key: Ed25519PrivateKey,
     kid: str,
     ttl_seconds: int = 3600,
-    jti: str | None = None,
+    jti: str,
 ) -> str:
+    if not isinstance(jti, str) or not jti.strip():
+        raise TokenValidationError("delegation jti is required")
     iat = now_ts()
     payload = {
         "typ": "rare.delegation",
@@ -217,8 +221,7 @@ def issue_rare_delegation(
         "exp": iat + ttl_seconds,
         "act": "delegated_by_rare",
     }
-    if jti:
-        payload["jti"] = jti
+    payload["jti"] = jti
 
     return sign_jws(
         payload=payload,

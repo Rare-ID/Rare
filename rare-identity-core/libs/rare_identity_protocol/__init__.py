@@ -2,6 +2,7 @@ from rare_identity_protocol.actions import build_action_payload
 from rare_identity_protocol.challenge import (
     build_auth_challenge_payload,
     build_full_attestation_issue_payload,
+    build_agent_auth_payload,
     build_platform_grant_payload,
     build_register_payload,
     build_set_name_payload,
@@ -13,6 +14,7 @@ from rare_identity_protocol.crypto import (
     decode_jws,
     generate_ed25519_keypair,
     generate_nonce,
+    json_dumps_compact,
     load_private_key,
     load_public_key,
     now_ts,
@@ -22,7 +24,13 @@ from rare_identity_protocol.crypto import (
     verify_detached,
     verify_jws,
 )
-from rare_identity_protocol.errors import ProtocolError, SignatureError, TokenValidationError
+from rare_identity_protocol.errors import (
+    ProtocolError,
+    ResourceLimitError,
+    SignatureError,
+    TokenValidationError,
+)
+from rare_identity_protocol.expiring_store import ExpiringMap, ExpiringSet
 from rare_identity_protocol.name_policy import normalize_name, validate_name
 from rare_identity_protocol.tokens import (
     issue_agent_delegation,
@@ -33,13 +41,17 @@ from rare_identity_protocol.tokens import (
 
 __all__ = [
     "ProtocolError",
+    "ResourceLimitError",
     "SignatureError",
     "TokenValidationError",
+    "ExpiringMap",
+    "ExpiringSet",
     "b64url_decode",
     "b64url_encode",
     "decode_jws",
     "generate_ed25519_keypair",
     "generate_nonce",
+    "json_dumps_compact",
     "load_private_key",
     "load_public_key",
     "now_ts",
@@ -50,6 +62,7 @@ __all__ = [
     "verify_jws",
     "build_auth_challenge_payload",
     "build_full_attestation_issue_payload",
+    "build_agent_auth_payload",
     "build_platform_grant_payload",
     "build_register_payload",
     "build_action_payload",

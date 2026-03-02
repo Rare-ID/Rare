@@ -8,3 +8,7 @@ class SignatureError(ProtocolError):
 
 class TokenValidationError(ProtocolError):
     """Raised when a token does not match protocol constraints."""
+
+
+class ResourceLimitError(ProtocolError):
+    """Raised when an in-memory security store reaches its capacity."""
