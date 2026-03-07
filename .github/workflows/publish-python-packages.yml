@@ -1,6 +1,13 @@
 name: publish-python-packages
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - "rare-identity-protocol-python/**"
+      - "rare-agent-sdk-python/**"
+      - ".github/workflows/publish-python-packages.yml"
   workflow_dispatch:
     inputs:
       target:
@@ -51,12 +58,23 @@ jobs:
       - name: Filter matrix
         id: filter
         run: |
-          target='${{ github.event.inputs.target }}'
           pkg='${{ matrix.package.name }}'
-          if [ "$target" = "all" ] || [ "$target" = "$pkg" ]; then
-            echo "selected=true" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "push" ]; then
+            case "$pkg" in
+              rare-identity-protocol|rare-agent-sdk)
+                echo "selected=true" >> "$GITHUB_OUTPUT"
+                ;;
+              *)
+                echo "selected=false" >> "$GITHUB_OUTPUT"
+                ;;
+            esac
           else
-            echo "selected=false" >> "$GITHUB_OUTPUT"
+            target='${{ github.event.inputs.target }}'
+            if [ "$target" = "all" ] || [ "$target" = "$pkg" ]; then
+              echo "selected=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "selected=false" >> "$GITHUB_OUTPUT"
+            fi
           fi
       - name: Install build tooling
         if: steps.filter.outputs.selected == 'true'
@@ -76,12 +94,12 @@ jobs:
           path: ${{ matrix.package.path }}/dist/*
 
   publish:
-    if: github.event.inputs.publish == 'true'
+    if: github.event_name == 'push' || github.event.inputs.publish == 'true'
     needs: build
     runs-on: ubuntu-latest
     permissions:
       id-token: write
-    environment: ${{ github.event.inputs.repository == 'pypi' && format('pypi-{0}', matrix.package.name) || github.event.inputs.repository }}
+    environment: ${{ github.event_name == 'push' && format('pypi-{0}', matrix.package.name) || (github.event.inputs.repository == 'pypi' && format('pypi-{0}', matrix.package.name) || github.event.inputs.repository) }}
     strategy:
       max-parallel: 1
       matrix:
@@ -94,12 +112,23 @@ jobs:
       - name: Filter matrix
         id: filter
         run: |
-          target='${{ github.event.inputs.target }}'
           pkg='${{ matrix.package.name }}'
-          if [ "$target" = "all" ] || [ "$target" = "$pkg" ]; then
-            echo "selected=true" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "push" ]; then
+            case "$pkg" in
+              rare-identity-protocol|rare-agent-sdk)
+                echo "selected=true" >> "$GITHUB_OUTPUT"
+                ;;
+              *)
+                echo "selected=false" >> "$GITHUB_OUTPUT"
+                ;;
+            esac
           else
-            echo "selected=false" >> "$GITHUB_OUTPUT"
+            target='${{ github.event.inputs.target }}'
+            if [ "$target" = "all" ] || [ "$target" = "$pkg" ]; then
+              echo "selected=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "selected=false" >> "$GITHUB_OUTPUT"
+            fi
           fi
       - name: Download distributions
         if: steps.filter.outputs.selected == 'true'
@@ -108,14 +137,14 @@ jobs:
           name: ${{ matrix.package.name }}-dist
           path: dist
       - name: Publish to TestPyPI
-        if: steps.filter.outputs.selected == 'true' && github.event.inputs.repository == 'testpypi'
+        if: steps.filter.outputs.selected == 'true' && github.event_name == 'workflow_dispatch' && github.event.inputs.repository == 'testpypi'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
           packages-dir: dist
           skip-existing: true
       - name: Publish to PyPI
-        if: steps.filter.outputs.selected == 'true' && github.event.inputs.repository == 'pypi'
+        if: steps.filter.outputs.selected == 'true' && (github.event_name == 'push' || github.event.inputs.repository == 'pypi')
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist

@@ -1,6 +1,12 @@
 name: publish-platform-kit-ts
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - "rare-platform-kit-ts/**"
+      - ".github/workflows/publish-platform-kit-ts.yml"
   workflow_dispatch:
     inputs:
       publish:
@@ -49,7 +55,7 @@ jobs:
           path: rare-platform-kit-ts/.artifacts/*.tgz
 
   publish:
-    if: github.event.inputs.publish == 'true'
+    if: github.event_name == 'push' || github.event.inputs.publish == 'true'
     needs: build
     runs-on: ubuntu-latest
     permissions:
