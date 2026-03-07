@@ -81,7 +81,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       id-token: write
-    environment: ${{ github.event.inputs.repository }}
+    environment: ${{ github.event.inputs.repository == 'pypi' && format('pypi-{0}', matrix.package.name) || github.event.inputs.repository }}
     strategy:
       max-parallel: 1
       matrix:
