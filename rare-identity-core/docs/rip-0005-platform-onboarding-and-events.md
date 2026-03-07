@@ -1,55 +1,55 @@
 # RIP-0005 Platform Onboarding and Events
 
-## Status
-Draft (v1)
+RIP: 0005
+Title: Platform Onboarding and Events
+Status: Accepted
+Type: Standards Track
+Author: Rare Maintainers
+Created: 2026-03-03
+Updated: 2026-03-03
+Requires: 0001, 0002, 0003
+Replaces: None
+Superseded-By: None
+Discussion: https://github.com/rare-project/rare/discussions
 
-## Objective
-Define platform registration, full-attestation enablement, and negative-event ingestion for identity governance.
+## Abstract
+This RIP defines platform onboarding, full attestation issuance for registered platforms, human-in-the-loop upgrade states, and negative event ingestion into the identity library.
 
-## Platform registration (DNS proof)
+## Motivation
+Rare needs a consistent path for third-party platforms to register trust anchors, receive audience-bound identity assertions, and report governance-relevant security events.
 
-### 1) Request challenge
+## Specification
+### Platform registration with DNS proof
+Step 1: request challenge
 - Endpoint: `POST /v1/platforms/register/challenge`
 - Input: `platform_aud`, `domain`
 - Output: `challenge_id`, `txt_name`, `txt_value`, `expires_at`
 
-### 2) Complete registration
+Step 2: complete registration
 - Endpoint: `POST /v1/platforms/register/complete`
 - Input: `challenge_id`, `platform_id`, `platform_aud`, `domain`, `keys[]`
-- Key item:
+- Key item fields:
   - `kid`
-  - `public_key` (Ed25519, base64url)
-- Verification:
-  - DNS TXT value at `txt_name` must contain `txt_value`
-  - challenge must be unexpired and single-use
-  - key ids must be unique
-- Output: `platform_id`, `platform_aud`, `domain`, `status=active`
+  - `public_key` (Ed25519 base64url)
 
-## Agent grant and full attestation
+Validation requirements:
+1. DNS TXT record at `txt_name` contains `txt_value`.
+2. Challenge is unexpired and single-use.
+3. Key ids are unique.
 
-### Grant create/revoke
-- `POST /v1/agents/platform-grants`
-- `DELETE /v1/agents/platform-grants/{platform_aud}`
-- Signed input: `rare-grant-v1:{agent_id}:{platform_aud}:{nonce}:{issued_at}:{expires_at}`
-- Signed window policy: `expires_at - issued_at <= 300` seconds
-- Grants are long-lived until revoked.
+Output fields include `platform_id`, `platform_aud`, `domain`, `status=active`.
 
-### Grant list
-- `GET /v1/agents/platform-grants/{agent_id}`
-- Auth: `Authorization: Bearer <admin_or_bound_hosted_token>`
-
-### Full attestation issue
+### Full attestation for registered platform
+Full attestation issue:
 - Endpoint: `POST /v1/attestations/full/issue`
 - Signed input: `rare-full-att-v1:{agent_id}:{platform_aud}:{nonce}:{issued_at}:{expires_at}`
-- Signed window policy: `expires_at - issued_at <= 300` seconds
-- Preconditions:
-  - platform is registered and active
-  - grant exists and not revoked
-- Output: `full_identity_attestation`
+- Policy: `expires_at - issued_at <= 300`
 
-## Agent requested human upgrade flow (L1/L2)
+Preconditions:
+1. Platform is registered and active.
 
-### Upgrade status model
+### Human upgrade flow (L1 and L2)
+Upgrade status model:
 - `requested`
 - `human_pending`
 - `verified`
@@ -57,87 +57,80 @@ Define platform registration, full-attestation enablement, and negative-event in
 - `expired`
 - `revoked` (reserved)
 
-### L1 email upgrade (magic link)
-- `POST /v1/upgrades/requests`
-  - signed input: `rare-upgrade-v1:{agent_id}:{target_level}:{request_id}:{nonce}:{issued_at}:{expires_at}`
-  - signed window policy: `expires_at - issued_at <= 300` seconds
-  - `target_level=L1` requires `contact_email`
+L1 email flow:
+- `POST /v1/upgrades/requests` (`target_level=L1`, requires `contact_email`)
 - `POST /v1/upgrades/l1/email/send-link`
-  - sends one-time magic link token (v1 local stub returns token in response)
-  - Auth: `Authorization: Bearer <admin_or_bound_hosted_token>` or self-hosted signed proof headers
-  - Raw token is returned only when `RARE_ALLOW_LOCAL_UPGRADE_SHORTCUTS=1`
-- `GET /v1/upgrades/l1/email/verify?token=...`
-  - verifies token and auto-upgrades to `L1`
-  - sets `owner_id=email:<sha256(lower(email))>`
+- `POST /v1/upgrades/l1/email/verify`
 
-### L2 social upgrade (X/GitHub any one)
-- precondition: current level must be `L1` or above
-- `POST /v1/upgrades/requests` with `target_level=L2`
+L2 social flow:
+- `POST /v1/upgrades/requests` (`target_level=L2`)
 - `POST /v1/upgrades/l2/social/start`
-  - input: `upgrade_request_id`, `provider=x|github`
-  - output: `authorize_url`, `state`
-  - Auth: `Authorization: Bearer <admin_or_bound_hosted_token>` or self-hosted signed proof headers
 - `GET /v1/upgrades/l2/social/callback`
-  - input: `provider`, `code`, `state`
-  - verifies oauth state and auto-upgrades to `L2`
 - `POST /v1/upgrades/l2/social/complete`
-  - local integration shortcut for passing provider snapshot directly
-  - Auth: `Authorization: Bearer <admin_or_bound_hosted_token>` or self-hosted signed proof headers
-  - Disabled by default; enable only with `RARE_ALLOW_LOCAL_UPGRADE_SHORTCUTS=1`
 
-### Shared status query
+Shared status query:
 - `GET /v1/upgrades/requests/{upgrade_request_id}`
-  - returns current state and next step
-  - Auth: `Authorization: Bearer <admin_or_bound_hosted_token>`
-  - Self-hosted alternative headers:
-    - `X-Rare-Agent-Id`
-    - `X-Rare-Agent-Nonce`
-    - `X-Rare-Agent-Issued-At`
-    - `X-Rare-Agent-Expires-At`
-    - `X-Rare-Agent-Signature`
 
-## Platform event token (negative only in v1)
+Upgrade request signing input:
+- `rare-upgrade-v1:{agent_id}:{target_level}:{request_id}:{nonce}:{issued_at}:{expires_at}`
+- Policy: `expires_at - issued_at <= 300`
 
-### Token format
-- Header:
-  - `typ=rare.platform-event+jws`
-  - `alg=EdDSA`
-  - `kid=<platform_kid>`
-- Payload:
-  - `typ=rare.platform-event`
-  - `ver=1`
-  - `iss=<platform_id>`
-  - `aud=rare.identity-library`
-  - `iat`, `exp`, `jti` (`jti` is mandatory)
-  - `events[]`
+### Platform event token (negative events only in v1)
+Header requirements:
+- `typ=rare.platform-event+jws`
+- `alg=EdDSA`
+- `kid=<platform_kid>`
 
-### Allowed categories
+Payload requirements:
+- `typ=rare.platform-event`
+- `ver=1`
+- `iss=<platform_id>`
+- `aud=rare.identity-library`
+- `iat`, `exp`, `jti` (`jti` is mandatory)
+- `events[]`
+
+Allowed categories:
 - `spam`
 - `fraud`
 - `abuse`
 - `policy_violation`
 
-### Ingest endpoint
+Ingest endpoint:
 - `POST /v1/identity-library/events/ingest`
 - Input: `event_token`
-- Verification:
-  1. platform key lookup by `kid` and signature verification
-  2. payload `typ/ver/iss/aud` validation
-  3. time window validation
-  4. replay protection on `(iss, jti)`
-  5. idempotent dedupe on `(iss, event_id)`
-- Side effects:
-  - update `IdentityProfile.risk_score`
-  - update `labels` (e.g. `abuse-reported`, `fraud-risk`)
-  - update `metadata.platform_event_counts`
 
-## Hosted signer API security
+Validation requirements:
+1. Lookup platform key by `kid` and verify signature.
+2. Validate payload `typ`, `ver`, `iss`, `aud`.
+3. Validate time window.
+4. Enforce replay protection on `(iss, jti)`.
+5. Enforce idempotent dedupe on `(iss, event_id)`.
+
+### Hosted signer API security
 - All `/v1/signer/*` endpoints require `Authorization: Bearer <hosted_management_token>`.
-- `hosted_management_token` is issued once at hosted registration (`POST /v1/agents/self_register`).
-- Registration response includes `hosted_management_token_expires_at`.
-- Token is bound to one hosted `agent_id`; token owner must match request payload `agent_id`.
-- Signer request `ttl_seconds` is capped at 300 seconds.
-- Hosted management token has finite TTL (default 30 days).
-- Token lifecycle management:
-  - Rotate: `POST /v1/signer/rotate_management_token`
-  - Revoke: `POST /v1/signer/revoke_management_token`
+- Hosted token is issued at `POST /v1/agents/self_register`.
+- Hosted token is bound to one hosted `agent_id`.
+- `ttl_seconds` for signer requests is capped at 300.
+- Token lifecycle endpoints:
+  - `POST /v1/signer/rotate_management_token`
+  - `POST /v1/signer/revoke_management_token`
+
+## Backward Compatibility
+This RIP documents v1 onboarding and governance flows without changing signed payload formats. Existing clients remain compatible when they already follow v1 endpoints and signed input policies.
+
+## Security Considerations
+- DNS challenge single-use and expiry are mandatory.
+- Full attestation signatures must be nonce-protected and short-lived.
+- Upgrade flows require replay-safe tokens and verified ownership signals.
+- Event ingestion requires signature validation, replay protection, and dedupe to resist abuse.
+
+## Test Vectors/Examples
+- Signing input vectors: `rare-identity-core/docs/test-vectors/rip-v1-signing-inputs.json`
+- Integration checks: `rare-agent-sdk-python/tests/test_sdk.py`
+
+## Reference Implementation
+- `rare-identity-core/services/rare_api/main.py`
+- `rare-identity-core/services/rare_api/service.py`
+- `rare-identity-core/tests/test_core.py`
+- `rare-agent-sdk-python/tests/_platform_stub.py`
+- `rare-agent-sdk-python/tests/test_sdk.py`

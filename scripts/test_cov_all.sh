@@ -2,18 +2,29 @@
 set -euo pipefail
 
 (
+  cd rare-identity-protocol-python
+  python -m pytest -q tests --cov=src/rare_identity_protocol --cov-report=term-missing --cov-fail-under=95
+)
+
+(
+  cd rare-identity-verifier-python
+  python -m pytest -q tests --cov=src/rare_identity_verifier --cov-report=term-missing --cov-fail-under=95
+)
+
+(
   cd rare-identity-core
-  python -m pytest -q --cov=libs/rare_identity_protocol --cov-report=term-missing --cov-fail-under=95
-  python -m pytest -q --cov=libs/rare_identity_verifier --cov-report=term-missing --cov-fail-under=95
-  python -m pytest -q --cov=services/rare_api --cov-report=term-missing --cov-fail-under=85
+  python -m pytest -q tests/test_core.py --cov=services/rare_api --cov-report=term-missing --cov-fail-under=85
 )
 
 (
-  cd rare-sdk-python
-  python -m pytest -q --cov=src/rare_sdk --cov-report=term-missing --cov-fail-under=85
+  cd rare-agent-sdk-python
+  python -m pytest -q --cov=src/rare_agent_sdk --cov-report=term-missing --cov-fail-under=85
 )
 
-(
-  cd rare-thirdparty-moltbook-example
-  python -m pytest -q --cov=apps/moltbook_api --cov-report=term-missing --cov-fail-under=90
-)
+if [[ -d rare-platform-kit-ts ]] && command -v pnpm >/dev/null 2>&1; then
+  (
+    cd rare-platform-kit-ts
+    pnpm -r build
+    pnpm -r test
+  )
+fi

@@ -1,13 +1,110 @@
 from __future__ import annotations
 
+import json
+import logging
 import os
+from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import FastAPI, Header, HTTPException, Query
-from pydantic import BaseModel, Field
+from fastapi import FastAPI, Header, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field, field_validator
+from starlette.middleware.base import BaseHTTPMiddleware
 
+from rare_api.integrations import (
+    GcpKmsEd25519JwsSigner,
+    GcpKmsHostedKeyCipher,
+    GitHubOAuthAdapter,
+    LocalAesGcmHostedKeyCipher,
+    NoopEmailProvider,
+    SendGridEmailProvider,
+    resolve_public_dns_txt,
+)
+from rare_api.key_provider import EphemeralKeyProvider, FileKeyProvider, GcpSecretManagerKeyProvider
 from rare_api.service import RareService
+from rare_api.state_store import InMemoryStateStore, PostgresRedisStateStore, SqliteStateStore
 from rare_identity_protocol.errors import ProtocolError, ResourceLimitError, SignatureError
+
+DEFAULT_MAX_REQUEST_BODY_BYTES = 256 * 1024
+DEFAULT_DYNAMIC_OBJECT_MAX_BYTES = 16 * 1024
+DEFAULT_DYNAMIC_OBJECT_MAX_KEYS = 64
+DEFAULT_DYNAMIC_OBJECT_MAX_ITEMS = 256
+DEFAULT_DYNAMIC_OBJECT_MAX_DEPTH = 6
+logger = logging.getLogger(__name__)
+
+
+def _walk_dynamic_value(value: Any, *, depth: int) -> None:
+    if depth > DEFAULT_DYNAMIC_OBJECT_MAX_DEPTH:
+        raise ValueError(f"object nesting exceeds max depth {DEFAULT_DYNAMIC_OBJECT_MAX_DEPTH}")
+    if isinstance(value, dict):
+        if len(value) > DEFAULT_DYNAMIC_OBJECT_MAX_KEYS:
+            raise ValueError(f"object key count exceeds max {DEFAULT_DYNAMIC_OBJECT_MAX_KEYS}")
+        for key, nested in value.items():
+            if not isinstance(key, str):
+                raise ValueError("object keys must be strings")
+            _walk_dynamic_value(nested, depth=depth + 1)
+        return
+    if isinstance(value, list):
+        if len(value) > DEFAULT_DYNAMIC_OBJECT_MAX_ITEMS:
+            raise ValueError(f"array item count exceeds max {DEFAULT_DYNAMIC_OBJECT_MAX_ITEMS}")
+        for nested in value:
+            _walk_dynamic_value(nested, depth=depth + 1)
+        return
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return
+    raise ValueError("unsupported value type in dynamic object")
+
+
+def _validate_dynamic_object(value: dict[str, Any], *, field_name: str) -> dict[str, Any]:
+    encoded = json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    if len(encoded) > DEFAULT_DYNAMIC_OBJECT_MAX_BYTES:
+        raise ValueError(f"{field_name} exceeds max {DEFAULT_DYNAMIC_OBJECT_MAX_BYTES} bytes")
+    _walk_dynamic_value(value, depth=1)
+    return value
+
+
+class _RequestBodyTooLargeError(RuntimeError):
+    pass
+
+
+class MaxBodySizeMiddleware(BaseHTTPMiddleware):
+    def __init__(self, app: Any, *, max_body_bytes: int) -> None:
+        super().__init__(app)
+        self.max_body_bytes = max_body_bytes
+
+    async def dispatch(self, request: Request, call_next: Any) -> Any:
+        content_length = request.headers.get("content-length")
+        if content_length is not None:
+            try:
+                if int(content_length) > self.max_body_bytes:
+                    return JSONResponse(
+                        status_code=413,
+                        content={"detail": f"request body too large (max {self.max_body_bytes} bytes)"},
+                    )
+            except ValueError:
+                pass
+
+        received = 0
+        receive = request.receive
+
+        async def limited_receive() -> dict[str, Any]:
+            nonlocal received
+            message = await receive()
+            if message["type"] == "http.request":
+                body = message.get("body", b"")
+                received += len(body)
+                if received > self.max_body_bytes:
+                    raise _RequestBodyTooLargeError
+            return message
+
+        request._receive = limited_receive  # type: ignore[attr-defined]
+        try:
+            return await call_next(request)
+        except _RequestBodyTooLargeError:
+            return JSONResponse(
+                status_code=413,
+                content={"detail": f"request body too large (max {self.max_body_bytes} bytes)"},
+            )
 
 
 class SelfRegisterRequest(BaseModel):
@@ -50,12 +147,6 @@ class IssueFullAttestationRequest(BaseModel):
     issued_at: int
     expires_at: int
     signature_by_agent: str
-
-
-class SignPlatformGrantRequest(BaseModel):
-    agent_id: str
-    platform_aud: str
-    ttl_seconds: int = 120
 
 
 class SignFullAttestationIssueRequest(BaseModel):
@@ -104,9 +195,19 @@ class SignActionRequest(BaseModel):
     issued_at: int
     expires_at: int
 
+    @field_validator("action_payload")
+    @classmethod
+    def _validate_action_payload(cls, value: dict[str, Any]) -> dict[str, Any]:
+        return _validate_dynamic_object(value, field_name="action_payload")
+
 
 class ProfilePatchRequest(BaseModel):
     patch: dict[str, Any]
+
+    @field_validator("patch")
+    @classmethod
+    def _validate_patch(cls, value: dict[str, Any]) -> dict[str, Any]:
+        return _validate_dynamic_object(value, field_name="patch")
 
 
 class CreateSubscriptionRequest(BaseModel):
@@ -134,23 +235,6 @@ class PlatformRegisterCompleteRequest(BaseModel):
     keys: list[PlatformRegisterKey]
 
 
-class PlatformGrantRequest(BaseModel):
-    agent_id: str
-    platform_aud: str
-    nonce: str
-    issued_at: int
-    expires_at: int
-    signature_by_agent: str
-
-
-class PlatformGrantRevokeRequest(BaseModel):
-    agent_id: str
-    nonce: str
-    issued_at: int
-    expires_at: int
-    signature_by_agent: str
-
-
 class IngestPlatformEventRequest(BaseModel):
     event_token: str
 
@@ -172,13 +256,22 @@ class UpgradeL1SendLinkRequest(BaseModel):
 
 class UpgradeL2SocialStartRequest(BaseModel):
     upgrade_request_id: str
-    provider: Literal["x", "github"]
+    provider: Literal["x", "github", "linkedin"]
 
 
 class UpgradeL2SocialCompleteRequest(BaseModel):
     upgrade_request_id: str
-    provider: Literal["x", "github"]
+    provider: Literal["x", "github", "linkedin"]
     provider_user_snapshot: dict[str, Any]
+
+    @field_validator("provider_user_snapshot")
+    @classmethod
+    def _validate_provider_user_snapshot(cls, value: dict[str, Any]) -> dict[str, Any]:
+        return _validate_dynamic_object(value, field_name="provider_user_snapshot")
+
+
+class VerifyUpgradeL1EmailRequest(BaseModel):
+    token: str = Field(min_length=1, max_length=256)
 
 
 def _extract_bearer_token(authorization: str | None) -> str:
@@ -204,6 +297,35 @@ def _env_bool(name: str, *, default: bool = False) -> bool:
     if raw is None:
         return default
     return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int(name: str, *, default: int, minimum: int = 1) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        parsed = int(raw.strip())
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer") from exc
+    if parsed < minimum:
+        raise ValueError(f"{name} must be >= {minimum}")
+    return parsed
+
+
+def _env_str(name: str, *, default: str) -> str:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    value = raw.strip()
+    return value if value else default
+
+
+def _env_csv(name: str, *, default: list[str]) -> list[str]:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    values = [item.strip().lower() for item in raw.split(",")]
+    return [item for item in values if item]
 
 
 def _has_complete_agent_proof(
@@ -261,21 +383,195 @@ def _raise_http(exc: Exception) -> None:
         lower_detail = str(exc).lower()
         status = 409 if ("nonce" in lower_detail or "replay" in lower_detail) else 400
         raise HTTPException(status_code=status, detail=str(exc)) from exc
+    logger.exception("Unhandled API exception")
     raise HTTPException(status_code=500, detail="internal server error") from exc
 
 
 def create_app(service: RareService | None = None, *, admin_token: str | None = None) -> FastAPI:
+    enable_docs = _env_bool("RARE_ENABLE_OPENAPI_DOCS", default=False)
+    max_body_bytes = _env_int(
+        "RARE_MAX_REQUEST_BODY_BYTES",
+        default=DEFAULT_MAX_REQUEST_BODY_BYTES,
+        minimum=1024,
+    )
     if service is None:
+        runtime_env = _env_str("RARE_ENV", default="dev").lower()
+        if runtime_env not in {"dev", "staging", "prod"}:
+            raise ValueError("RARE_ENV must be one of: dev, staging, prod")
+        public_base_url = _env_str("RARE_PUBLIC_BASE_URL", default="")
+        if runtime_env in {"staging", "prod"} and not public_base_url:
+            raise ValueError("RARE_PUBLIC_BASE_URL is required when RARE_ENV is staging/prod")
+        storage_backend = _env_str("RARE_STORAGE_BACKEND", default="memory").lower()
+        if storage_backend not in {"memory", "postgres_redis", "sqlite"}:
+            raise ValueError("RARE_STORAGE_BACKEND must be one of: memory, postgres_redis, sqlite")
+        if runtime_env in {"staging", "prod"} and storage_backend == "memory":
+            raise RuntimeError("RARE_STORAGE_BACKEND=memory is forbidden when RARE_ENV is staging/prod")
+
+        if storage_backend == "postgres_redis":
+            state_store = PostgresRedisStateStore(
+                namespace=_env_str("RARE_STATE_NAMESPACE", default=f"{runtime_env}:default"),
+                postgres_dsn=os.getenv("RARE_POSTGRES_DSN"),
+                redis_url=os.getenv("RARE_REDIS_URL"),
+            )
+        elif storage_backend == "sqlite":
+            sqlite_path = _env_str(
+                "RARE_SQLITE_STATE_FILE",
+                default=str(Path.home() / ".config" / "rare" / f"{runtime_env}-state.sqlite3"),
+            )
+            state_store = SqliteStateStore(path=sqlite_path)
+        else:
+            state_store = InMemoryStateStore()
+
+        key_backend = _env_str("RARE_KEY_PROVIDER", default="file").lower()
+        keyring_path = _env_str(
+            "RARE_KEYRING_FILE",
+            default=str(Path.home() / ".config" / "rare" / "keyring.json"),
+        )
+        if key_backend == "file":
+            key_provider = FileKeyProvider(path=keyring_path)
+        elif key_backend == "ephemeral":
+            key_provider = EphemeralKeyProvider()
+        elif key_backend in {"gcp", "gcp_secret_manager"}:
+            key_provider = GcpSecretManagerKeyProvider(
+                secret_name=_env_str("RARE_GCP_KEYRING_SECRET", default=f"rare-keyring-{runtime_env}"),
+                project_id=os.getenv("RARE_GCP_PROJECT_ID"),
+            )
+        else:
+            raise ValueError("RARE_KEY_PROVIDER must be one of: file, ephemeral, gcp_secret_manager")
+
+        hosted_key_cipher_name = _env_str("RARE_HOSTED_KEY_CIPHER", default="plaintext").lower()
+        if hosted_key_cipher_name == "aesgcm":
+            cipher_key = os.getenv("RARE_HOSTED_KEY_CIPHER_KEY")
+            if not cipher_key:
+                raise ValueError("RARE_HOSTED_KEY_CIPHER_KEY is required when RARE_HOSTED_KEY_CIPHER=aesgcm")
+            hosted_key_cipher = LocalAesGcmHostedKeyCipher(key_b64=cipher_key)
+        elif hosted_key_cipher_name == "gcp_kms":
+            kms_key_name = os.getenv("RARE_HOSTED_KEY_CIPHER_KMS_KEY")
+            if not kms_key_name:
+                raise ValueError(
+                    "RARE_HOSTED_KEY_CIPHER_KMS_KEY is required when RARE_HOSTED_KEY_CIPHER=gcp_kms"
+                )
+            hosted_key_cipher = GcpKmsHostedKeyCipher(key_name=kms_key_name)
+        else:
+            hosted_key_cipher = None
+
+        identity_jws_signer = None
+        rare_delegation_signer = None
+        if key_backend in {"gcp", "gcp_kms", "gcp_secret_manager"}:
+            identity_kms_key_version = os.getenv("RARE_KMS_IDENTITY_KEY_VERSION")
+            rare_signer_kms_key_version = os.getenv("RARE_KMS_RARE_SIGNER_KEY_VERSION")
+            if identity_kms_key_version and rare_signer_kms_key_version:
+                identity_jws_signer = GcpKmsEd25519JwsSigner(
+                    kid=_env_str("RARE_KMS_IDENTITY_KID", default="rare-kms-identity"),
+                    key_version_name=identity_kms_key_version,
+                )
+                rare_delegation_signer = GcpKmsEd25519JwsSigner(
+                    kid=_env_str("RARE_KMS_RARE_SIGNER_KID", default="rare-kms-signer"),
+                    key_version_name=rare_signer_kms_key_version,
+                )
+
+        email_provider_name = _env_str("RARE_EMAIL_PROVIDER", default="noop").lower()
+        if email_provider_name == "sendgrid":
+            sendgrid_api_key = os.getenv("RARE_SENDGRID_API_KEY")
+            sendgrid_from_email = os.getenv("RARE_SENDGRID_FROM_EMAIL")
+            if not sendgrid_api_key or not sendgrid_from_email:
+                raise ValueError("SendGrid requires RARE_SENDGRID_API_KEY and RARE_SENDGRID_FROM_EMAIL")
+            email_provider = SendGridEmailProvider(
+                api_key=sendgrid_api_key,
+                from_email=sendgrid_from_email,
+            )
+        else:
+            email_provider = NoopEmailProvider()
+
+        dns_resolver_name = _env_str(
+            "RARE_DNS_RESOLVER",
+            default="public" if runtime_env in {"staging", "prod"} else "noop",
+        ).lower()
+        if dns_resolver_name == "public":
+            dns_txt_resolver = resolve_public_dns_txt
+        elif dns_resolver_name == "noop":
+            dns_txt_resolver = None
+        else:
+            raise ValueError("RARE_DNS_RESOLVER must be one of: noop, public")
+
+        default_social_providers = ["github"] if runtime_env in {"staging", "prod"} else ["github", "x", "linkedin"]
+        enabled_social_providers = _env_csv(
+            "RARE_SOCIAL_PROVIDER_ALLOWLIST",
+            default=default_social_providers,
+        )
+        social_provider_adapters = {}
+        if "github" in enabled_social_providers:
+            github_client_id = os.getenv("RARE_GITHUB_CLIENT_ID")
+            github_client_secret = os.getenv("RARE_GITHUB_CLIENT_SECRET")
+            if runtime_env in {"staging", "prod"}:
+                if not github_client_id or not github_client_secret:
+                    raise ValueError("GitHub OAuth requires RARE_GITHUB_CLIENT_ID and RARE_GITHUB_CLIENT_SECRET")
+                social_provider_adapters["github"] = GitHubOAuthAdapter(
+                    client_id=github_client_id,
+                    client_secret=github_client_secret,
+                    redirect_uri=f"{public_base_url.rstrip('/')}/v1/upgrades/l2/social/callback?provider=github",
+                )
+            else:
+                social_provider_adapters["github"] = GitHubOAuthAdapter(
+                    client_id=github_client_id or "rare-dev-github",
+                    client_secret=github_client_secret or "rare-dev-secret",
+                    redirect_uri=(
+                        f"{public_base_url.rstrip('/')}/v1/upgrades/l2/social/callback?provider=github"
+                        if public_base_url
+                        else "https://rare.local/v1/upgrades/l2/social/callback?provider=github"
+                    ),
+                ) if github_client_id and github_client_secret else None  # type: ignore[assignment]
+        unsupported_enabled = set(enabled_social_providers) - {"github"}
+        if unsupported_enabled and runtime_env in {"staging", "prod"}:
+            raise ValueError("Only GitHub OAuth is implemented for staging/prod")
+        social_provider_adapters = {key: value for key, value in social_provider_adapters.items() if value is not None}
+
         resolved_admin_token = admin_token if admin_token is not None else os.getenv("RARE_ADMIN_TOKEN")
         rare_service = RareService(
             admin_token=resolved_admin_token,
             allow_local_upgrade_shortcuts=_env_bool("RARE_ALLOW_LOCAL_UPGRADE_SHORTCUTS", default=False),
+            public_base_url=public_base_url or None,
+            max_agent_records=_env_int("RARE_MAX_AGENT_RECORDS", default=100_000),
+            max_upgrade_requests=_env_int("RARE_MAX_UPGRADE_REQUESTS", default=100_000),
+            public_write_rate_limit_per_minute=_env_int("RARE_PUBLIC_WRITE_RATE_LIMIT_PER_MINUTE", default=120),
+            state_store=state_store,
+            key_provider=key_provider,
+            hosted_key_cipher=hosted_key_cipher,
+            email_provider=email_provider,
+            dns_txt_resolver=dns_txt_resolver,
+            social_provider_adapters=social_provider_adapters or None,
+            identity_jws_signer=identity_jws_signer,
+            rare_delegation_signer=rare_delegation_signer,
         )
     else:
         rare_service = service
         if admin_token is not None:
             rare_service.set_admin_token(admin_token)
-    app = FastAPI(title="Rare API Gateway", version="0.2.0")
+    enable_legacy_magic_link_query = _env_bool(
+        "RARE_ENABLE_LEGACY_MAGIC_LINK_QUERY_VERIFY",
+        default=bool(getattr(rare_service, "public_base_url", None)),
+    )
+    app = FastAPI(
+        title="Rare API Gateway",
+        version="0.2.0",
+        docs_url="/docs" if enable_docs else None,
+        redoc_url="/redoc" if enable_docs else None,
+        openapi_url="/openapi.json" if enable_docs else None,
+    )
+    app.add_middleware(MaxBodySizeMiddleware, max_body_bytes=max_body_bytes)
+
+    @app.get("/healthz")
+    def healthz() -> dict[str, Any]:
+        return rare_service.health_report()
+
+    @app.get("/readyz")
+    def readyz() -> JSONResponse:
+        try:
+            report = rare_service.readiness_report()
+        except Exception as exc:  # noqa: BLE001
+            return JSONResponse(status_code=503, content={"status": "error", "detail": str(exc)})
+        status_code = 200 if report.get("status") == "ok" else 503
+        return JSONResponse(status_code=status_code, content=report)
 
     def _authorize_hosted_signer_call(*, agent_id: str, authorization: str | None) -> None:
         token = _extract_bearer_token(authorization)
@@ -318,8 +614,10 @@ def create_app(service: RareService | None = None, *, admin_token: str | None = 
         )
 
     @app.post("/v1/agents/self_register")
-    def self_register(request: SelfRegisterRequest) -> dict:
+    def self_register(request: SelfRegisterRequest, request_meta: Request) -> dict:
         try:
+            client_id = request_meta.client.host if request_meta.client and request_meta.client.host else "unknown"
+            rare_service.enforce_public_write_limit(operation="self_register", client_id=client_id)
             return rare_service.self_register(
                 name=request.name,
                 key_mode=request.key_mode,
@@ -395,21 +693,6 @@ def create_app(service: RareService | None = None, *, admin_token: str | None = 
             return rare_service.sign_set_name(
                 agent_id=request.agent_id,
                 name=request.name,
-                ttl_seconds=request.ttl_seconds,
-            )
-        except Exception as exc:  # noqa: BLE001
-            _raise_http(exc)
-
-    @app.post("/v1/signer/sign_platform_grant")
-    def sign_platform_grant(
-        request: SignPlatformGrantRequest,
-        authorization: str | None = Header(default=None),
-    ) -> dict:
-        try:
-            _authorize_hosted_signer_call(agent_id=request.agent_id, authorization=authorization)
-            return rare_service.sign_platform_grant(
-                agent_id=request.agent_id,
-                platform_aud=request.platform_aud,
                 ttl_seconds=request.ttl_seconds,
             )
         except Exception as exc:  # noqa: BLE001
@@ -542,6 +825,62 @@ def create_app(service: RareService | None = None, *, admin_token: str | None = 
         except Exception as exc:  # noqa: BLE001
             _raise_http(exc)
 
+    @app.get("/v1/admin/agents")
+    def list_agents(authorization: str | None = Header(default=None)) -> list[dict[str, Any]]:
+        try:
+            _authorize_admin_call(authorization)
+            return rare_service.list_agents()
+        except Exception as exc:  # noqa: BLE001
+            _raise_http(exc)
+
+    @app.get("/v1/admin/agents/{agent_id}")
+    def get_agent(agent_id: str, authorization: str | None = Header(default=None)) -> dict[str, Any]:
+        try:
+            _authorize_admin_call(authorization)
+            return rare_service.get_agent_details(agent_id=agent_id)
+        except Exception as exc:  # noqa: BLE001
+            _raise_http(exc)
+
+    @app.get("/v1/admin/agents/{agent_id}/audit")
+    def get_agent_audit(agent_id: str, authorization: str | None = Header(default=None)) -> list[dict[str, Any]]:
+        try:
+            _authorize_admin_call(authorization)
+            return rare_service.list_agent_audit_events(agent_id=agent_id)
+        except Exception as exc:  # noqa: BLE001
+            _raise_http(exc)
+
+    @app.get("/v1/admin/upgrades/{upgrade_request_id}")
+    def get_admin_upgrade(upgrade_request_id: str, authorization: str | None = Header(default=None)) -> dict[str, Any]:
+        try:
+            _authorize_admin_call(authorization)
+            return rare_service.get_admin_upgrade_request(upgrade_request_id=upgrade_request_id)
+        except Exception as exc:  # noqa: BLE001
+            _raise_http(exc)
+
+    @app.get("/v1/admin/platforms")
+    def list_platforms(authorization: str | None = Header(default=None)) -> list[dict[str, Any]]:
+        try:
+            _authorize_admin_call(authorization)
+            return rare_service.list_platforms()
+        except Exception as exc:  # noqa: BLE001
+            _raise_http(exc)
+
+    @app.get("/v1/admin/platforms/{platform_aud}")
+    def get_platform(platform_aud: str, authorization: str | None = Header(default=None)) -> dict[str, Any]:
+        try:
+            _authorize_admin_call(authorization)
+            return rare_service.get_platform(platform_aud=platform_aud)
+        except Exception as exc:  # noqa: BLE001
+            _raise_http(exc)
+
+    @app.get("/v1/admin/audit")
+    def list_audit(authorization: str | None = Header(default=None)) -> list[dict[str, Any]]:
+        try:
+            _authorize_admin_call(authorization)
+            return rare_service.list_audit_events()
+        except Exception as exc:  # noqa: BLE001
+            _raise_http(exc)
+
     @app.post("/v1/platforms/register/challenge")
     def issue_platform_register_challenge(request: PlatformRegisterChallengeRequest) -> dict:
         try:
@@ -562,60 +901,6 @@ def create_app(service: RareService | None = None, *, admin_token: str | None = 
                 domain=request.domain,
                 keys=[key.model_dump() if hasattr(key, "model_dump") else key.dict() for key in request.keys],
             )
-        except Exception as exc:  # noqa: BLE001
-            _raise_http(exc)
-
-    @app.post("/v1/agents/platform-grants")
-    def create_platform_grant(request: PlatformGrantRequest) -> dict:
-        try:
-            return rare_service.create_platform_grant(
-                agent_id=request.agent_id,
-                platform_aud=request.platform_aud,
-                nonce=request.nonce,
-                issued_at=request.issued_at,
-                expires_at=request.expires_at,
-                signature_by_agent=request.signature_by_agent,
-            )
-        except Exception as exc:  # noqa: BLE001
-            _raise_http(exc)
-
-    @app.delete("/v1/agents/platform-grants/{platform_aud}")
-    def revoke_platform_grant(platform_aud: str, request: PlatformGrantRevokeRequest) -> dict:
-        try:
-            return rare_service.revoke_platform_grant(
-                agent_id=request.agent_id,
-                platform_aud=platform_aud,
-                nonce=request.nonce,
-                issued_at=request.issued_at,
-                expires_at=request.expires_at,
-                signature_by_agent=request.signature_by_agent,
-            )
-        except Exception as exc:  # noqa: BLE001
-            _raise_http(exc)
-
-    @app.get("/v1/agents/platform-grants/{agent_id}")
-    def list_platform_grants(
-        agent_id: str,
-        authorization: str | None = Header(default=None),
-        proof_agent_id: str | None = Header(default=None, alias="X-Rare-Agent-Id"),
-        proof_nonce: str | None = Header(default=None, alias="X-Rare-Agent-Nonce"),
-        proof_issued_at: int | None = Header(default=None, alias="X-Rare-Agent-Issued-At"),
-        proof_expires_at: int | None = Header(default=None, alias="X-Rare-Agent-Expires-At"),
-        proof_signature_by_agent: str | None = Header(default=None, alias="X-Rare-Agent-Signature"),
-    ) -> dict:
-        try:
-            _authorize_agent_management_call(
-                agent_id=agent_id,
-                operation="list_platform_grants",
-                resource_id=agent_id,
-                authorization=authorization,
-                proof_agent_id=proof_agent_id,
-                proof_nonce=proof_nonce,
-                proof_issued_at=proof_issued_at,
-                proof_expires_at=proof_expires_at,
-                proof_signature_by_agent=proof_signature_by_agent,
-            )
-            return rare_service.list_platform_grants(agent_id=agent_id)
         except Exception as exc:  # noqa: BLE001
             _raise_http(exc)
 
@@ -707,12 +992,21 @@ def create_app(service: RareService | None = None, *, admin_token: str | None = 
         except Exception as exc:  # noqa: BLE001
             _raise_http(exc)
 
-    @app.get("/v1/upgrades/l1/email/verify")
-    def verify_upgrade_l1_email(token: str = Query(...)) -> dict:
+    @app.post("/v1/upgrades/l1/email/verify")
+    def verify_upgrade_l1_email(request: VerifyUpgradeL1EmailRequest) -> dict:
         try:
-            return rare_service.verify_upgrade_l1_email(token=token)
+            return rare_service.verify_upgrade_l1_email(token=request.token)
         except Exception as exc:  # noqa: BLE001
             _raise_http(exc)
+
+    if enable_legacy_magic_link_query:
+
+        @app.get("/v1/upgrades/l1/email/verify")
+        def verify_upgrade_l1_email_legacy(token: str = Query(...)) -> dict:
+            try:
+                return rare_service.verify_upgrade_l1_email(token=token)
+            except Exception as exc:  # noqa: BLE001
+                _raise_http(exc)
 
     @app.post("/v1/upgrades/l2/social/start")
     def start_upgrade_l2_social(
@@ -753,7 +1047,7 @@ def create_app(service: RareService | None = None, *, admin_token: str | None = 
 
     @app.get("/v1/upgrades/l2/social/callback")
     def social_callback_upgrade_l2(
-        provider: Literal["x", "github"] = Query(...),
+        provider: Literal["x", "github", "linkedin"] = Query(...),
         code: str = Query(...),
         state: str = Query(...),
     ) -> dict:

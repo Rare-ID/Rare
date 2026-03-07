@@ -1,18 +1,29 @@
 from __future__ import annotations
 
+import base64
+import sqlite3
 from dataclasses import dataclass
+from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 from fastapi.testclient import TestClient
 
+from rare_api.integrations import GitHubOAuthAdapter, LocalAesGcmHostedKeyCipher, SendGridEmailProvider
+from rare_api.key_provider import EphemeralKeyProvider, FileKeyProvider, GcpSecretManagerKeyProvider
 from rare_api.main import create_app
 from rare_api.service import RareService
+from rare_api.state_store import (
+    PostgresRedisStateStore,
+    SqliteStateStore,
+    _RedisBackedExpiringMap,
+    _RedisBackedExpiringSet,
+)
 from rare_identity_protocol import (
     TokenValidationError,
     build_action_payload,
     build_agent_auth_payload,
     build_auth_challenge_payload,
-    build_platform_grant_payload,
     build_register_payload,
     build_set_name_payload,
     build_upgrade_request_payload,
@@ -22,6 +33,7 @@ from rare_identity_protocol import (
     load_private_key,
     load_public_key,
     now_ts,
+    public_key_to_b64,
     sign_detached,
     sign_jws,
     verify_detached,
@@ -44,6 +56,107 @@ class RegisteredPlatform:
     platform_id: str
     key_id: str
     private_key: str
+
+
+class FakeHttpResponse:
+    def __init__(self, *, status_code: int = 200, json_body: dict | None = None, headers: dict[str, str] | None = None) -> None:
+        self.status_code = status_code
+        self._json_body = json_body or {}
+        self.headers = headers or {}
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            raise RuntimeError(f"http {self.status_code}")
+
+    def json(self) -> dict:
+        return self._json_body
+
+
+class FakeHttpClient:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, dict]] = []
+
+    def post(self, url: str, **kwargs: dict) -> FakeHttpResponse:
+        self.calls.append(("POST", url, kwargs))
+        if url.endswith("/access_token"):
+            return FakeHttpResponse(json_body={"access_token": "gh-token"})
+        return FakeHttpResponse(status_code=202, headers={"x-message-id": "sg-message-1"})
+
+    def get(self, url: str, **kwargs: dict) -> FakeHttpResponse:
+        self.calls.append(("GET", url, kwargs))
+        return FakeHttpResponse(
+            json_body={
+                "id": 123,
+                "login": "rare-agent",
+                "name": "Rare Agent",
+                "html_url": "https://github.com/rare-agent",
+            }
+        )
+
+
+class FakeRedisClient:
+    def __init__(self) -> None:
+        self.values: dict[bytes, bytes] = {}
+        self.ttls: dict[bytes, int] = {}
+
+    def scan_iter(self, *, match: str) -> list[bytes]:
+        prefix = match.removesuffix("*").encode("utf-8")
+        return [key for key in self.values if key.startswith(prefix)]
+
+    def get(self, key: bytes) -> bytes | None:
+        return self.values.get(key)
+
+    def ttl(self, key: bytes) -> int | None:
+        return self.ttls.get(key)
+
+
+class FakeSecretPayload:
+    def __init__(self, data: bytes) -> None:
+        self.data = data
+
+
+class FakeSecretVersionResponse:
+    def __init__(self, data: bytes) -> None:
+        self.payload = FakeSecretPayload(data)
+
+
+class FakeSecretManagerClient:
+    class NotFound(Exception):
+        pass
+
+    def __init__(self) -> None:
+        self.secrets: dict[str, list[bytes]] = {}
+
+    @staticmethod
+    def secret_path(project_id: str, secret_id: str) -> str:
+        return f"projects/{project_id}/secrets/{secret_id}"
+
+    def get_secret(self, request: dict) -> dict:
+        name = request["name"]
+        if name not in self.secrets:
+            raise self.NotFound(name)
+        return {"name": name}
+
+    def create_secret(self, request: dict) -> dict:
+        parent = request["parent"]
+        secret_id = request["secret_id"]
+        secret_path = f"{parent}/secrets/{secret_id}"
+        self.secrets.setdefault(secret_path, [])
+        return {"name": secret_path}
+
+    def add_secret_version(self, request: dict) -> dict:
+        parent = request["parent"]
+        data = bytes(request["payload"]["data"])
+        self.secrets.setdefault(parent, []).append(data)
+        return {"name": f"{parent}/versions/{len(self.secrets[parent])}"}
+
+    def access_secret_version(self, request: dict) -> FakeSecretVersionResponse:
+        name = request["name"]
+        parent = name.removesuffix("/versions/latest")
+        versions = self.secrets.get(parent)
+        if not versions:
+            raise self.NotFound(name)
+        return FakeSecretVersionResponse(versions[-1])
 
 
 @pytest.fixture
@@ -165,22 +278,6 @@ def register_platform(client: TestClient, service: RareService, *, aud: str = "p
         key_id="platform-k1",
         private_key=platform_private,
     )
-
-
-def sign_hosted_platform_grant(
-    client: TestClient,
-    *,
-    agent_id: str,
-    platform_aud: str,
-    hosted_management_token: str,
-) -> dict:
-    response = client.post(
-        "/v1/signer/sign_platform_grant",
-        json={"agent_id": agent_id, "platform_aud": platform_aud, "ttl_seconds": 120},
-        headers={"Authorization": f"Bearer {hosted_management_token}"},
-    )
-    assert response.status_code == 200
-    return response.json()
 
 
 def sign_hosted_full_issue(
@@ -459,7 +556,7 @@ def test_public_caps_level_to_l1_but_full_keeps_l2(env: dict) -> None:
         headers=hosted_headers(agent),
     )
     assert sent.status_code == 200
-    verified_l1 = client.get("/v1/upgrades/l1/email/verify", params={"token": sent.json()["token"]})
+    verified_l1 = client.post("/v1/upgrades/l1/email/verify", json={"token": sent.json()["token"]})
     assert verified_l1.status_code == 200
 
     l2_request_id = "cap-upg-l2"
@@ -485,15 +582,6 @@ def test_public_caps_level_to_l1_but_full_keeps_l2(env: dict) -> None:
     public_token = upgraded.json()["public_identity_attestation"]
     public_verified = verify_identity_attestation(public_token, key_resolver=service.get_identity_public_key)
     assert public_verified.payload["lvl"] == "L1"
-
-    grant_signed = sign_hosted_platform_grant(
-        client,
-        agent_id=agent.agent_id,
-        platform_aud="platform",
-        hosted_management_token=agent.hosted_management_token or "",
-    )
-    grant = client.post("/v1/agents/platform-grants", json=grant_signed)
-    assert grant.status_code == 200
 
     full_signed = sign_hosted_full_issue(
         client,
@@ -555,8 +643,9 @@ def test_upgrade_l1_magic_link_flow_and_nonce_replay(env: dict) -> None:
         headers=hosted_headers(agent),
     )
     assert sent.status_code == 200
+    assert "?" not in sent.json()["magic_link"]
     token = sent.json()["token"]
-    verified = client.get("/v1/upgrades/l1/email/verify", params={"token": token})
+    verified = client.post("/v1/upgrades/l1/email/verify", json={"token": token})
     assert verified.status_code == 200
     assert verified.json()["status"] == "upgraded"
     assert verified.json()["level"] == "L1"
@@ -571,7 +660,7 @@ def test_upgrade_l1_magic_link_flow_and_nonce_replay(env: dict) -> None:
     assert profile.status_code == 200
     assert "owner-linked" in profile.json()["labels"]
 
-    reused = client.get("/v1/upgrades/l1/email/verify", params={"token": token})
+    reused = client.post("/v1/upgrades/l1/email/verify", json={"token": token})
     assert reused.status_code == 400
 
 
@@ -645,7 +734,7 @@ def test_upgrade_l2_requires_l1_and_supports_x_or_github(env: dict) -> None:
         headers=hosted_headers(agent),
     )
     assert sent.status_code == 200
-    verified_l1 = client.get("/v1/upgrades/l1/email/verify", params={"token": sent.json()["token"]})
+    verified_l1 = client.post("/v1/upgrades/l1/email/verify", json={"token": sent.json()["token"]})
     assert verified_l1.status_code == 200
     assert verified_l1.json()["level"] == "L1"
 
@@ -685,28 +774,6 @@ def test_upgrade_l2_requires_l1_and_supports_x_or_github(env: dict) -> None:
     assert "platform is not registered" in full_x_without_platform.json()["detail"]
 
     register_platform(client, service, aud="platform")
-    full_x_without_grant = client.post(
-        "/v1/attestations/full/issue",
-        json=sign_hosted_full_issue(
-            client,
-            agent_id=agent.agent_id,
-            platform_aud="platform",
-            hosted_management_token=agent.hosted_management_token or "",
-        ),
-    )
-    assert full_x_without_grant.status_code == 403
-    assert "agent has not granted this platform" in full_x_without_grant.json()["detail"]
-
-    grant = client.post(
-        "/v1/agents/platform-grants",
-        json=sign_hosted_platform_grant(
-            client,
-            agent_id=agent.agent_id,
-            platform_aud="platform",
-            hosted_management_token=agent.hosted_management_token or "",
-        ),
-    )
-    assert grant.status_code == 200
 
     full_x = client.post(
         "/v1/attestations/full/issue",
@@ -806,7 +873,7 @@ def test_upgrade_l2_oauth_state_expired_and_replay(env: dict) -> None:
         headers=hosted_headers(agent),
     )
     assert sent.status_code == 200
-    verified_l1 = client.get("/v1/upgrades/l1/email/verify", params={"token": sent.json()["token"]})
+    verified_l1 = client.post("/v1/upgrades/l1/email/verify", json={"token": sent.json()["token"]})
     assert verified_l1.status_code == 200
 
     l2_request_id = "upg-l2-state-main"
@@ -864,6 +931,76 @@ def test_upgrade_l2_oauth_state_expired_and_replay(env: dict) -> None:
         params={"provider": "x", "code": "good-code-2", "state": state_replay},
     )
     assert second.status_code == 400
+
+
+def test_upgrade_l2_linkedin_callback_updates_attestation_claims(env: dict) -> None:
+    client = env["client"]
+    service = env["service"]
+    agent = register_agent(client, "linkedin-agent")
+
+    l1_request_id = "upg-linkedin-l1"
+    signed_l1 = sign_hosted_upgrade_request(
+        client,
+        agent_id=agent.agent_id,
+        target_level="L1",
+        request_id=l1_request_id,
+        hosted_management_token=agent.hosted_management_token or "",
+    )
+    created_l1 = client.post(
+        "/v1/upgrades/requests",
+        json={**signed_l1, "contact_email": "linkedin-owner@example.com"},
+    )
+    assert created_l1.status_code == 200
+    sent = client.post(
+        "/v1/upgrades/l1/email/send-link",
+        json={"upgrade_request_id": l1_request_id},
+        headers=hosted_headers(agent),
+    )
+    assert sent.status_code == 200
+    verified_l1 = client.post("/v1/upgrades/l1/email/verify", json={"token": sent.json()["token"]})
+    assert verified_l1.status_code == 200
+
+    l2_request_id = "upg-linkedin-l2"
+    signed_l2 = sign_hosted_upgrade_request(
+        client,
+        agent_id=agent.agent_id,
+        target_level="L2",
+        request_id=l2_request_id,
+        hosted_management_token=agent.hosted_management_token or "",
+    )
+    created_l2 = client.post("/v1/upgrades/requests", json=signed_l2)
+    assert created_l2.status_code == 200
+
+    started = client.post(
+        "/v1/upgrades/l2/social/start",
+        json={"upgrade_request_id": l2_request_id, "provider": "linkedin"},
+        headers=hosted_headers(agent),
+    )
+    assert started.status_code == 200
+    callback = client.get(
+        "/v1/upgrades/l2/social/callback",
+        params={"provider": "linkedin", "code": "linkedin-code", "state": started.json()["state"]},
+    )
+    assert callback.status_code == 200
+    assert callback.json()["level"] == "L2"
+
+    register_platform(client, service, aud="platform-linkedin")
+    full_issue = client.post(
+        "/v1/attestations/full/issue",
+        json=sign_hosted_full_issue(
+            client,
+            agent_id=agent.agent_id,
+            platform_aud="platform-linkedin",
+            hosted_management_token=agent.hosted_management_token or "",
+        ),
+    )
+    assert full_issue.status_code == 200
+    verified = verify_identity_attestation(
+        full_issue.json()["full_identity_attestation"],
+        key_resolver=service.get_identity_public_key,
+        expected_aud="platform-linkedin",
+    )
+    assert verified.payload["claims"]["linkedin"]["vanity_name"].startswith("li_")
 
 
 def test_platform_registration_dns_mismatch_expired_and_reuse(env: dict) -> None:
@@ -937,7 +1074,7 @@ def test_platform_registration_dns_mismatch_expired_and_reuse(env: dict) -> None
     assert expired.status_code == 400
 
 
-def test_full_issue_requires_registration_grant_and_rejects_replay(env: dict) -> None:
+def test_full_issue_requires_registration_and_rejects_replay(env: dict) -> None:
     client = env["client"]
     service = env["service"]
     agent = register_agent(client, "need-grant")
@@ -952,19 +1089,6 @@ def test_full_issue_requires_registration_grant_and_rejects_replay(env: dict) ->
     assert no_platform.status_code == 403
 
     register_platform(client, service, aud="platform")
-    no_grant = client.post("/v1/attestations/full/issue", json=full_signed)
-    assert no_grant.status_code == 403
-
-    grant_signed = sign_hosted_platform_grant(
-        client,
-        agent_id=agent.agent_id,
-        platform_aud="platform",
-        hosted_management_token=agent.hosted_management_token or "",
-    )
-    grant_ok = client.post("/v1/agents/platform-grants", json=grant_signed)
-    assert grant_ok.status_code == 200
-    grant_replay = client.post("/v1/agents/platform-grants", json=grant_signed)
-    assert grant_replay.status_code == 409
 
     full_issue_ok = client.post("/v1/attestations/full/issue", json=full_signed)
     assert full_issue_ok.status_code == 200
@@ -1245,69 +1369,6 @@ def test_platform_register_key_validation_and_conflicts(env: dict) -> None:
     assert "platform_aud already registered by another platform_id" in aud_conflict.json()["detail"]
 
 
-def test_self_hosted_grant_revoke_and_list(env: dict) -> None:
-    client = env["client"]
-    service = env["service"]
-    admin_token = env["admin_token"]
-    register_platform(client, service, aud="platform")
-    agent = register_self_hosted_agent(client, name="self-agent")
-    assert agent.private_key is not None
-
-    issued_at = now_ts()
-    expires_at = issued_at + 120
-    nonce = generate_nonce(8)
-    sign_input = build_platform_grant_payload(
-        agent_id=agent.agent_id,
-        platform_aud="platform",
-        nonce=nonce,
-        issued_at=issued_at,
-        expires_at=expires_at,
-    )
-    signature = sign_detached(sign_input, load_private_key(agent.private_key))
-    granted = client.post(
-        "/v1/agents/platform-grants",
-        json={
-            "agent_id": agent.agent_id,
-            "platform_aud": "platform",
-            "nonce": nonce,
-            "issued_at": issued_at,
-            "expires_at": expires_at,
-            "signature_by_agent": signature,
-        },
-    )
-    assert granted.status_code == 200
-
-    listing = client.get(
-        f"/v1/agents/platform-grants/{agent.agent_id}",
-        headers=admin_headers(admin_token),
-    )
-    assert listing.status_code == 200
-    assert listing.json()["grants"][0]["status"] == "active"
-
-    revoke_nonce = generate_nonce(8)
-    revoke_input = build_platform_grant_payload(
-        agent_id=agent.agent_id,
-        platform_aud="platform",
-        nonce=revoke_nonce,
-        issued_at=issued_at,
-        expires_at=expires_at,
-    )
-    revoke_sig = sign_detached(revoke_input, load_private_key(agent.private_key))
-    revoked = client.request(
-        "DELETE",
-        "/v1/agents/platform-grants/platform",
-        json={
-            "agent_id": agent.agent_id,
-            "nonce": revoke_nonce,
-            "issued_at": issued_at,
-            "expires_at": expires_at,
-            "signature_by_agent": revoke_sig,
-        },
-    )
-    assert revoked.status_code == 200
-    assert revoked.json()["status"] == "revoked"
-
-
 def test_platform_event_ingest_updates_profile_and_blocks_replays(env: dict) -> None:
     client = env["client"]
     service = env["service"]
@@ -1570,7 +1631,7 @@ def test_upgrade_state_transitions_require_bound_management_auth(env: dict) -> N
         headers=hosted_headers(agent),
     )
     assert send_ok.status_code == 200
-    verified_l1 = client.get("/v1/upgrades/l1/email/verify", params={"token": send_ok.json()["token"]})
+    verified_l1 = client.post("/v1/upgrades/l1/email/verify", json={"token": send_ok.json()["token"]})
     assert verified_l1.status_code == 200
 
     l2_request_id = "upgrade-auth-l2"
@@ -1623,24 +1684,6 @@ def test_read_endpoints_require_admin_or_bound_hosted_token(env: dict) -> None:
     agent = register_agent(client, "read-auth-agent")
     other = register_agent(client, "read-auth-other")
 
-    list_missing = client.get(f"/v1/agents/platform-grants/{agent.agent_id}")
-    assert list_missing.status_code == 401
-    list_wrong = client.get(
-        f"/v1/agents/platform-grants/{agent.agent_id}",
-        headers=hosted_headers(other),
-    )
-    assert list_wrong.status_code == 403
-    list_ok = client.get(
-        f"/v1/agents/platform-grants/{agent.agent_id}",
-        headers=hosted_headers(agent),
-    )
-    assert list_ok.status_code == 200
-    list_admin = client.get(
-        f"/v1/agents/platform-grants/{agent.agent_id}",
-        headers=admin_headers(admin_token),
-    )
-    assert list_admin.status_code == 200
-
     request_id = "read-auth-upgrade"
     signed = sign_hosted_upgrade_request(
         client,
@@ -1673,17 +1716,6 @@ def test_read_endpoints_require_admin_or_bound_hosted_token(env: dict) -> None:
 
     self_hosted = register_self_hosted_agent(client, name="read-auth-self")
     assert self_hosted.private_key is not None
-
-    self_list = client.get(
-        f"/v1/agents/platform-grants/{self_hosted.agent_id}",
-        headers=self_hosted_management_headers(
-            agent_id=self_hosted.agent_id,
-            private_key=self_hosted.private_key,
-            operation="list_platform_grants",
-            resource_id=self_hosted.agent_id,
-        ),
-    )
-    assert self_list.status_code == 200
 
     self_request_id = "read-auth-self-upgrade"
     issued_at = now_ts()
@@ -1811,6 +1843,447 @@ def test_create_app_with_service_does_not_override_admin_token_from_env(monkeypa
     assert env.status_code == 403
 
 
+def test_create_app_disables_docs_and_openapi_by_default() -> None:
+    client = TestClient(create_app(RareService()))
+    assert client.get("/docs").status_code == 404
+    assert client.get("/redoc").status_code == 404
+    assert client.get("/openapi.json").status_code == 404
+
+
+def test_create_app_can_enable_docs_with_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RARE_ENABLE_OPENAPI_DOCS", "1")
+    client = TestClient(create_app(RareService()))
+    assert client.get("/docs").status_code == 200
+    assert client.get("/openapi.json").status_code == 200
+
+
+def test_file_key_provider_keeps_keys_stable_across_service_restarts(tmp_path: Path) -> None:
+    keyring_file = tmp_path / "rare-keyring.json"
+    provider = FileKeyProvider(path=keyring_file)
+    first = RareService(key_provider=provider)
+    second = RareService(key_provider=provider)
+
+    assert first.active_identity_kid == second.active_identity_kid
+    first_identity_pub = public_key_to_b64(first.identity_keys[first.active_identity_kid].private_key.public_key())
+    second_identity_pub = public_key_to_b64(second.identity_keys[second.active_identity_kid].private_key.public_key())
+    assert first_identity_pub == second_identity_pub
+    assert public_key_to_b64(first.get_rare_signer_public_key()) == public_key_to_b64(second.get_rare_signer_public_key())
+
+    identity_key = first.identity_keys[first.active_identity_kid]
+    token = sign_jws(
+        payload={
+            "typ": "rare.identity",
+            "ver": 1,
+            "iss": "rare",
+            "sub": "agent-stable",
+            "lvl": "L1",
+            "claims": {"profile": {"name": "stable"}},
+            "iat": 0,
+            "exp": 120,
+            "jti": "stable-jti",
+        },
+        private_key=identity_key.private_key,
+        kid=identity_key.kid,
+        typ="rare.identity.public+jws",
+    )
+    verified = verify_identity_attestation(token, key_resolver=second.get_identity_public_key, current_ts=0)
+    assert verified.payload["sub"] == "agent-stable"
+
+
+def test_postgres_redis_store_shares_replay_state_between_instances() -> None:
+    namespace = f"shared-{generate_nonce(6)}"
+    PostgresRedisStateStore.clear_namespace(namespace)
+    store = PostgresRedisStateStore(namespace=namespace)
+    try:
+        service_one = RareService(state_store=store, key_provider=EphemeralKeyProvider())
+        service_two = RareService(state_store=store, key_provider=EphemeralKeyProvider())
+        client_one = TestClient(create_app(service_one))
+        client_two = TestClient(create_app(service_two))
+
+        agent = register_self_hosted_agent(client_one, name="shared-replay")
+        assert agent.private_key is not None
+        issued_at = now_ts()
+        expires_at = issued_at + 120
+        nonce = "shared-nonce-1"
+        payload = build_set_name_payload(
+            agent_id=agent.agent_id,
+            name="shared-replay-v2",
+            nonce=nonce,
+            issued_at=issued_at,
+            expires_at=expires_at,
+        )
+        signature = sign_detached(payload, load_private_key(agent.private_key))
+        request_payload = {
+            "agent_id": agent.agent_id,
+            "name": "shared-replay-v2",
+            "nonce": nonce,
+            "issued_at": issued_at,
+            "expires_at": expires_at,
+            "signature_by_agent": signature,
+        }
+
+        first = client_one.post("/v1/agents/set_name", json=request_payload)
+        assert first.status_code == 200
+        replay = client_two.post("/v1/agents/set_name", json=request_payload)
+        assert replay.status_code == 409
+        assert "nonce already used" in replay.json()["detail"]
+    finally:
+        PostgresRedisStateStore.clear_namespace(namespace)
+
+
+def test_create_app_forbids_memory_backend_in_prod(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RARE_ENV", "prod")
+    monkeypatch.setenv("RARE_PUBLIC_BASE_URL", "https://api.example.com")
+    monkeypatch.setenv("RARE_STORAGE_BACKEND", "memory")
+    with pytest.raises(RuntimeError, match="forbidden"):
+        create_app()
+
+
+def test_create_app_allows_postgres_redis_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    namespace = f"app-ns-{generate_nonce(6)}"
+    PostgresRedisStateStore.clear_namespace(namespace)
+    monkeypatch.setenv("RARE_ENV", "staging")
+    monkeypatch.setenv("RARE_PUBLIC_BASE_URL", "https://api.staging.example.com")
+    monkeypatch.setenv("RARE_STORAGE_BACKEND", "postgres_redis")
+    monkeypatch.setenv("RARE_STATE_NAMESPACE", namespace)
+    monkeypatch.setenv("RARE_KEY_PROVIDER", "ephemeral")
+    monkeypatch.setenv("RARE_GITHUB_CLIENT_ID", "gh-client")
+    monkeypatch.setenv("RARE_GITHUB_CLIENT_SECRET", "gh-secret")
+    try:
+        client = TestClient(create_app())
+        response = client.post("/v1/agents/self_register", json={"name": "store-enabled"})
+        assert response.status_code == 200
+    finally:
+        PostgresRedisStateStore.clear_namespace(namespace)
+
+
+def test_healthz_and_readyz_report_runtime_status(env: dict) -> None:
+    client = env["client"]
+    health = client.get("/healthz")
+    ready = client.get("/readyz")
+
+    assert health.status_code == 200
+    assert health.json()["status"] == "ok"
+    assert ready.status_code == 200
+    ready_body = ready.json()
+    assert ready_body["status"] == "ok"
+    assert ready_body["checks"]["state_store"]["status"] == "ok"
+
+
+def test_sqlite_state_store_persists_agents_and_audit(tmp_path: Path) -> None:
+    keyring_file = tmp_path / "rare-keyring.json"
+    sqlite_file = tmp_path / "rare-state.sqlite3"
+    provider = FileKeyProvider(path=keyring_file)
+    cipher_key = base64.urlsafe_b64encode(b"0" * 32).decode("ascii")
+    cipher = LocalAesGcmHostedKeyCipher(key_b64=cipher_key)
+    admin_token = "sqlite-admin"
+
+    first = RareService(
+        allow_local_upgrade_shortcuts=True,
+        admin_token=admin_token,
+        key_provider=provider,
+        state_store=SqliteStateStore(path=sqlite_file),
+        hosted_key_cipher=cipher,
+    )
+    first_client = TestClient(create_app(first))
+    registered = first_client.post("/v1/agents/self_register", json={"name": "sqlite-agent"})
+    assert registered.status_code == 200
+    agent_id = registered.json()["agent_id"]
+    private_key_b64 = first._private_key_to_b64(first.hosted_agent_private_keys[agent_id])
+
+    second = RareService(
+        allow_local_upgrade_shortcuts=True,
+        admin_token=admin_token,
+        key_provider=provider,
+        state_store=SqliteStateStore(path=sqlite_file),
+        hosted_key_cipher=cipher,
+    )
+    second_client = TestClient(create_app(second))
+    details = second_client.get(
+        f"/v1/admin/agents/{agent_id}",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert details.status_code == 200
+    assert details.json()["agent_id"] == agent_id
+    audit = second_client.get(
+        f"/v1/admin/agents/{agent_id}/audit",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert audit.status_code == 200
+    assert any(item["event_type"] == "self_register" for item in audit.json())
+
+    raw_db = sqlite_file.read_bytes()
+    assert private_key_b64.encode("utf-8") not in raw_db
+
+    with sqlite3.connect(sqlite_file) as connection:
+        agent_row = connection.execute(
+            "SELECT agent_id, key_mode, name, status FROM rare_agents WHERE agent_id = ?",
+            (agent_id,),
+        ).fetchone()
+        assert agent_row == (agent_id, "hosted-signer", "sqlite-agent", "active")
+        hosted_key_row = connection.execute(
+            "SELECT agent_id, public_key_b64, private_key_ciphertext FROM rare_hosted_agent_keys WHERE agent_id = ?",
+            (agent_id,),
+        ).fetchone()
+        assert hosted_key_row is not None
+        assert hosted_key_row[0] == agent_id
+        assert hosted_key_row[1] == agent_id
+        assert private_key_b64 not in hosted_key_row[2]
+        audit_count = connection.execute("SELECT COUNT(*) FROM rare_audit_events").fetchone()
+        assert audit_count == (1,)
+
+
+def test_sqlite_state_store_syncs_between_instances(tmp_path: Path) -> None:
+    sqlite_file = tmp_path / "shared-state.sqlite3"
+    keyring_file = tmp_path / "shared-keyring.json"
+    provider = FileKeyProvider(path=keyring_file)
+
+    first = RareService(
+        key_provider=provider,
+        state_store=SqliteStateStore(path=sqlite_file),
+    )
+    second = RareService(
+        key_provider=provider,
+        state_store=SqliteStateStore(path=sqlite_file),
+    )
+    first_client = TestClient(create_app(first))
+    second_client = TestClient(create_app(second))
+
+    registered = first_client.post("/v1/agents/self_register", json={"name": "shared-sqlite-agent"})
+    assert registered.status_code == 200
+    agent_id = registered.json()["agent_id"]
+
+    refreshed = second_client.post("/v1/attestations/refresh", json={"agent_id": agent_id})
+    assert refreshed.status_code == 200
+    assert refreshed.json()["agent_id"] == agent_id
+
+
+def test_self_register_persists_snapshot_with_redis_backed_replay_handles(tmp_path: Path) -> None:
+    sqlite_file = tmp_path / "redis-backed-state.sqlite3"
+    service = RareService(state_store=SqliteStateStore(path=sqlite_file))
+    service.public_write_counters = _RedisBackedExpiringMap(  # type: ignore[assignment]
+        redis_url=None,
+        prefix="test:public-write",
+        capacity=64,
+    )
+    service.used_name_nonces = _RedisBackedExpiringSet(  # type: ignore[assignment]
+        redis_url=None,
+        prefix="test:used-name",
+        capacity=64,
+    )
+    client = TestClient(create_app(service))
+
+    response = client.post("/v1/agents/self_register", json={"name": "redis-backed-register"})
+
+    assert response.status_code == 200
+    snapshot = service._serialize_snapshot()
+    assert snapshot["public_write_counters"]
+
+
+def test_redis_backed_expiring_map_snapshot_entries_decode_colon_prefix_keys() -> None:
+    store = _RedisBackedExpiringMap(redis_url=None, prefix="rare:ratelimit:public_write:prod:default", capacity=8)
+    fake_redis = FakeRedisClient()
+    redis_key = b'rare:ratelimit:public_write:prod:default:["client",1]'
+    fake_redis.values[redis_key] = store._encode_value({"count": 2})
+    fake_redis.ttls[redis_key] = 30
+    store._redis = fake_redis
+
+    entries = store.snapshot_entries()
+
+    assert len(entries) == 1
+    assert entries[0][0] == ["client", 1]
+    assert entries[0][1] == {"count": 2}
+
+
+def test_admin_agent_endpoints_require_admin_token(env: dict) -> None:
+    client = env["client"]
+    agent = register_agent(client, "admin-endpoint-check")
+
+    missing = client.get(f"/v1/admin/agents/{agent.agent_id}")
+    assert missing.status_code == 401
+
+    forbidden = client.get(
+        f"/v1/admin/agents/{agent.agent_id}",
+        headers=hosted_headers(agent),
+    )
+    assert forbidden.status_code == 403
+
+    allowed = client.get(
+        f"/v1/admin/agents/{agent.agent_id}",
+        headers=admin_headers(env["admin_token"]),
+    )
+    assert allowed.status_code == 200
+    assert allowed.json()["agent_id"] == agent.agent_id
+
+
+def test_self_register_public_write_rate_limit_enforced() -> None:
+    service = RareService(public_write_rate_limit_per_minute=2)
+    client = TestClient(create_app(service))
+    assert client.post("/v1/agents/self_register", json={"name": "ratelimit-1"}).status_code == 200
+    assert client.post("/v1/agents/self_register", json={"name": "ratelimit-2"}).status_code == 200
+    blocked = client.post("/v1/agents/self_register", json={"name": "ratelimit-3"})
+    assert blocked.status_code == 429
+    assert "rate limit exceeded" in blocked.json()["detail"]
+
+
+def test_self_register_agent_capacity_enforced() -> None:
+    service = RareService(max_agent_records=1, max_identity_profiles=1)
+    client = TestClient(create_app(service))
+    assert client.post("/v1/agents/self_register", json={"name": "cap-1"}).status_code == 200
+    blocked = client.post("/v1/agents/self_register", json={"name": "cap-2"})
+    assert blocked.status_code == 429
+    assert "capacity exceeded" in blocked.json()["detail"]
+
+
+def test_magic_link_verify_query_disabled_by_default(env: dict) -> None:
+    client = env["client"]
+    agent = register_agent(client, "legacy-query-off")
+    signed = sign_hosted_upgrade_request(
+        client,
+        agent_id=agent.agent_id,
+        target_level="L1",
+        request_id="legacy-query-off-req",
+        hosted_management_token=agent.hosted_management_token or "",
+    )
+    created = client.post(
+        "/v1/upgrades/requests",
+        json={**signed, "contact_email": "legacy-off@example.com"},
+    )
+    assert created.status_code == 200
+    sent = client.post(
+        "/v1/upgrades/l1/email/send-link",
+        json={"upgrade_request_id": "legacy-query-off-req"},
+        headers=hosted_headers(agent),
+    )
+    assert sent.status_code == 200
+    legacy = client.get("/v1/upgrades/l1/email/verify", params={"token": sent.json()["token"]})
+    assert legacy.status_code == 405
+
+
+def test_magic_link_verify_query_can_be_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RARE_ENABLE_LEGACY_MAGIC_LINK_QUERY_VERIFY", "1")
+    service = RareService(allow_local_upgrade_shortcuts=True)
+    client = TestClient(create_app(service))
+    agent = register_agent(client, "legacy-query-on")
+    signed = sign_hosted_upgrade_request(
+        client,
+        agent_id=agent.agent_id,
+        target_level="L1",
+        request_id="legacy-query-on-req",
+        hosted_management_token=agent.hosted_management_token or "",
+    )
+    created = client.post(
+        "/v1/upgrades/requests",
+        json={**signed, "contact_email": "legacy-on@example.com"},
+    )
+    assert created.status_code == 200
+    sent = client.post(
+        "/v1/upgrades/l1/email/send-link",
+        json={"upgrade_request_id": "legacy-query-on-req"},
+        headers=hosted_headers(agent),
+    )
+    assert sent.status_code == 200
+    verified = client.get("/v1/upgrades/l1/email/verify", params={"token": sent.json()["token"]})
+    assert verified.status_code == 200
+
+
+def test_public_base_url_emits_clickable_magic_link_and_enables_query_verify(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("RARE_ENABLE_LEGACY_MAGIC_LINK_QUERY_VERIFY", raising=False)
+    service = RareService(allow_local_upgrade_shortcuts=True, public_base_url="https://api.example.com")
+    client = TestClient(create_app(service))
+    agent = register_agent(client, "public-base-url")
+    signed = sign_hosted_upgrade_request(
+        client,
+        agent_id=agent.agent_id,
+        target_level="L1",
+        request_id="public-base-url-req",
+        hosted_management_token=agent.hosted_management_token or "",
+    )
+    created = client.post(
+        "/v1/upgrades/requests",
+        json={**signed, "contact_email": "public-base@example.com"},
+    )
+    assert created.status_code == 200
+    sent = client.post(
+        "/v1/upgrades/l1/email/send-link",
+        json={"upgrade_request_id": "public-base-url-req"},
+        headers=hosted_headers(agent),
+    )
+    assert sent.status_code == 200
+    magic_link = sent.json()["magic_link"]
+    parsed = urlparse(magic_link)
+    assert parsed.scheme == "https"
+    assert parsed.netloc == "api.example.com"
+    token = parse_qs(parsed.query)["token"][0]
+    verified = client.get(parsed.path, params={"token": token})
+    assert verified.status_code == 200
+
+
+def test_request_body_size_limit_enforced(env: dict) -> None:
+    client = env["client"]
+    huge_name = "x" * (300 * 1024)
+    rejected = client.post("/v1/agents/self_register", json={"name": huge_name})
+    assert rejected.status_code == 413
+
+
+def test_dynamic_object_limits_enforced(env: dict) -> None:
+    client = env["client"]
+    admin_token = env["admin_token"]
+    agent = register_agent(client, "dynamic-limit")
+
+    oversize_patch = {
+        "metadata": {f"k{i}": "v" for i in range(80)},
+    }
+    patch_rejected = client.patch(
+        f"/v1/identity-library/profiles/{agent.agent_id}",
+        json={"patch": oversize_patch},
+        headers=admin_headers(admin_token),
+    )
+    assert patch_rejected.status_code == 422
+
+    now = now_ts()
+    prepared = client.post(
+        "/v1/signer/prepare_auth",
+        json={
+            "agent_id": agent.agent_id,
+            "aud": "platform",
+            "nonce": generate_nonce(8),
+            "issued_at": now,
+            "expires_at": now + 120,
+            "scope": ["login"],
+        },
+        headers=hosted_headers(agent),
+    )
+    assert prepared.status_code == 200
+    prepared_body = prepared.json()
+    action_rejected = client.post(
+        "/v1/signer/sign_action",
+        json={
+            "agent_id": agent.agent_id,
+            "session_pubkey": prepared_body["session_pubkey"],
+            "session_token": "sess-token",
+            "aud": "platform",
+            "action": "post",
+            "action_payload": {f"k{i}": "v" for i in range(80)},
+            "nonce": generate_nonce(8),
+            "issued_at": now,
+            "expires_at": now + 120,
+        },
+        headers=hosted_headers(agent),
+    )
+    assert action_rejected.status_code == 422
+
+    oversized_snapshot = client.post(
+        "/v1/upgrades/l2/social/complete",
+        json={
+            "upgrade_request_id": "does-not-matter",
+            "provider": "github",
+            "provider_user_snapshot": {f"k{i}": "v" for i in range(80)},
+        },
+    )
+    assert oversized_snapshot.status_code == 422
+
+
 def test_upgrade_local_shortcuts_disabled_by_default() -> None:
     service = RareService(allow_local_upgrade_shortcuts=False)
     client = TestClient(create_app(service))
@@ -1872,10 +2345,22 @@ def test_removed_deprecated_endpoints_return_404(env: dict) -> None:
         ("/v1/assets/github/connect", {"agent_id": agent.agent_id, "id": "1", "login": "x"}),
         ("/v1/attestations/upgrade", {"agent_id": agent.agent_id, "target_level": "L2"}),
         ("/v1/agents/hosted_sign_delegation", {"agent_id": agent.agent_id, "aud": "platform", "session_pubkey": agent.agent_id}),
+        ("/v1/signer/sign_platform_grant", {"agent_id": agent.agent_id, "platform_aud": "platform", "ttl_seconds": 120}),
+        ("/v1/agents/platform-grants", {"agent_id": agent.agent_id, "platform_aud": "platform"}),
     ]
     for path, payload in removed_paths:
         response = client.post(path, json=payload)
         assert response.status_code == 404
+
+    removed_get = client.get(f"/v1/agents/platform-grants/{agent.agent_id}")
+    assert removed_get.status_code == 404
+
+    removed_delete = client.request(
+        "DELETE",
+        "/v1/agents/platform-grants/platform",
+        json={"agent_id": agent.agent_id},
+    )
+    assert removed_delete.status_code == 404
 
 
 def test_signed_window_limit_enforced_for_signer_and_requests(env: dict) -> None:
@@ -1888,7 +2373,6 @@ def test_signed_window_limit_enforced_for_signer_and_requests(env: dict) -> None
     )
     assert ttl_too_long.status_code == 400
     for path, payload in [
-        ("/v1/signer/sign_platform_grant", {"agent_id": hosted.agent_id, "platform_aud": "platform", "ttl_seconds": 301}),
         (
             "/v1/signer/sign_full_attestation_issue",
             {"agent_id": hosted.agent_id, "platform_aud": "platform", "ttl_seconds": 301},
@@ -2071,6 +2555,73 @@ def test_sign_delegation_endpoint_requires_bound_hosted_token_and_valid_ttl(env:
     )
     assert ttl_too_long.status_code == 400
     assert "ttl_seconds exceeds max" in ttl_too_long.json()["detail"]
+
+
+def test_sendgrid_provider_sends_real_http_request_shape() -> None:
+    fake_http = FakeHttpClient()
+    provider = SendGridEmailProvider(
+        api_key="sg-key",
+        from_email="noreply@example.com",
+        http_client=fake_http,
+    )
+
+    result = provider.send_upgrade_link(
+        recipient_hint="owner@example.com",
+        upgrade_request_id="upg-1",
+        verify_url="https://api.example.com/v1/upgrades/l1/email/verify?token=abc",
+        expires_at=123456,
+    )
+
+    assert result["provider"] == "sendgrid"
+    assert result["provider_request_id"] == "sg-message-1"
+    method, url, kwargs = fake_http.calls[0]
+    assert method == "POST"
+    assert url == "https://api.sendgrid.com/v3/mail/send"
+    assert kwargs["json"]["personalizations"][0]["to"][0]["email"] == "owner@example.com"
+
+
+def test_github_oauth_adapter_builds_and_exchanges_with_real_endpoints() -> None:
+    fake_http = FakeHttpClient()
+    adapter = GitHubOAuthAdapter(
+        client_id="gh-client",
+        client_secret="gh-secret",
+        redirect_uri="https://api.example.com/v1/upgrades/l2/social/callback?provider=github",
+        http_client=fake_http,
+    )
+
+    authorize_url = adapter.build_authorize_url(state="state-123")
+    parsed = urlparse(authorize_url)
+    assert parsed.netloc == "github.com"
+    assert parse_qs(parsed.query)["state"] == ["state-123"]
+
+    snapshot = adapter.exchange_code(code="oauth-code", state="state-123")
+    assert snapshot["provider"] == "github"
+    assert snapshot["provider_user_id"] == "123"
+    assert snapshot["username_or_handle"] == "rare-agent"
+
+
+def test_gcp_secret_manager_key_provider_persists_keyring_versions() -> None:
+    fake_client = FakeSecretManagerClient()
+    provider = GcpSecretManagerKeyProvider(
+        secret_name="rare-keyring-test",
+        project_id="rare-project",
+        client=fake_client,
+    )
+
+    first = provider.load_or_create()
+    second = provider.load_or_create()
+
+    assert first.active_identity_kid == second.active_identity_kid
+    assert len(fake_client.secrets["projects/rare-project/secrets/rare-keyring-test"]) == 1
+    readiness = provider.readiness()
+    assert readiness["status"] == "ok"
+
+
+def test_sign_delegation_endpoint_rejects_invalid_session_key_and_accepts_valid_one(env: dict) -> None:
+    client = env["client"]
+    service = env["service"]
+    agent = register_agent(client, "deleg-sign-valid")
+    _, session_pubkey = generate_ed25519_keypair()
 
     bad_session = client.post(
         "/v1/signer/sign_delegation",
