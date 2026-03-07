@@ -37,7 +37,11 @@ jobs:
       - name: Test
         run: pnpm -r test
       - name: Pack
-        run: pnpm -r pack --pack-destination .artifacts
+        run: |
+          mkdir -p .artifacts
+          for pkg in packages/*; do
+            (cd "$pkg" && pnpm pack --pack-destination ../../.artifacts)
+          done
       - name: Upload tarballs
         uses: actions/upload-artifact@v4
         with:

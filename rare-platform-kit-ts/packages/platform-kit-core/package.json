@@ -20,7 +20,7 @@
   },
   "publishConfig": {
     "access": "public",
-    "provenance": true
+    "provenance": false
   },
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts",
