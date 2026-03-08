@@ -1,0 +1,35 @@
+name: sync-public-oss
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "rare-identity-protocol-python/**"
+      - "rare-identity-verifier-python/**"
+      - "rare-agent-sdk-python/**"
+      - "rare-platform-kit-ts/**"
+      - "rare-identity-core/docs/**"
+      - "scripts/sync_public_repos.sh"
+      - ".github/workflows/sync-public-oss.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: sync-public-oss
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Sync public OSS repositories
+        env:
+          OSS_SYNC_TOKEN: ${{ secrets.OSS_SYNC_TOKEN }}
+          PUBLIC_OSS_OWNER: Rare-ID
+        run: bash scripts/sync_public_repos.sh

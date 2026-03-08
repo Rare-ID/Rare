@@ -31,6 +31,8 @@
   - GCP 部署说明
 - `docs/sdk-release.md`
   - SDK 发布说明
+- `docs/oss-split-plan.md`
+  - 公开仓/私有仓拆分建议
 - `FOR_AGENT.md`
   - Agent 接入说明/skill 文档
 - `FOR_PLATFORM.md`
@@ -56,11 +58,15 @@
   - 现在支持两种触发方式：
     - 手动发布
     - `main` 分支更新 `rare-platform-kit-ts/**` 后自动发布 npm 包
+- `.github/workflows/sync-public-oss.yml`
+  - `main` 分支更新公开相关目录后，自动同步到 `Rare-ID` 组织下的公开仓
+  - 需要 secret：`OSS_SYNC_TOKEN`
 
 ## GitHub Secrets And Environments
 
 - Repository secrets
   - `NPM_TOKEN`
+  - `OSS_SYNC_TOKEN`
   - `GCP_WORKLOAD_IDENTITY_PROVIDER`
   - `GCP_SERVICE_ACCOUNT_EMAIL`
 - Repository variables
