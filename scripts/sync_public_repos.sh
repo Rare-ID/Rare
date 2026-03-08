@@ -97,7 +97,6 @@ sync_protocol_repo() {
   repo_dir="$(clone_repo "rare-protocol-py")"
 
   remove_junk "$repo_dir"
-  copy_file "$repo_dir" "LICENSE" "LICENSE"
   copy_file "$repo_dir" "public-oss/rare-protocol-py/README.md" "README.md"
   copy_dir "$repo_dir" "public-oss/rare-protocol-py/.github" ".github"
 
@@ -129,7 +128,6 @@ sync_agent_repo() {
   repo_dir="$(clone_repo "rare-agent-python")"
 
   remove_junk "$repo_dir"
-  copy_file "$repo_dir" "LICENSE" "LICENSE"
   copy_dir "$repo_dir" "public-oss/rare-agent-python/.github" ".github"
 
   copy_file "$repo_dir" "rare-agent-sdk-python/README.md" "README.md"
@@ -147,7 +145,6 @@ sync_platform_repo() {
   repo_dir="$(clone_repo "rare-platform-ts")"
 
   remove_junk "$repo_dir"
-  copy_file "$repo_dir" "LICENSE" "LICENSE"
   copy_dir "$repo_dir" "public-oss/rare-platform-ts/.github" ".github"
 
   copy_file "$repo_dir" "rare-platform-kit-ts/README.md" "README.md"
