@@ -33,6 +33,8 @@
   - SDK 发布说明
 - `docs/oss-split-plan.md`
   - 公开仓/私有仓拆分建议
+- `public-oss/`
+  - 公开仓 README / CI / release workflow 模板
 - `FOR_AGENT.md`
   - Agent 接入说明/skill 文档
 - `FOR_PLATFORM.md`

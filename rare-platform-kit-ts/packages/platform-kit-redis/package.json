@@ -15,8 +15,8 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/0xsidfan/Rare.git",
-    "directory": "rare-platform-kit-ts/packages/platform-kit-redis"
+    "url": "git+https://github.com/Rare-ID/rare-platform-ts.git",
+    "directory": "packages/platform-kit-redis"
   },
   "publishConfig": {
     "access": "public",

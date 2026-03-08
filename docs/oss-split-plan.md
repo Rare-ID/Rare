@@ -128,6 +128,10 @@
 
 - workflow: `.github/workflows/sync-public-oss.yml`
 - script: `scripts/sync_public_repos.sh`
+- public repo templates:
+  - `public-oss/rare-protocol-py/**`
+  - `public-oss/rare-agent-python/**`
+  - `public-oss/rare-platform-ts/**`
 
 需要的 GitHub secret：
 
@@ -137,6 +141,17 @@
     - `Rare-ID/rare-protocol-py`
     - `Rare-ID/rare-agent-python`
     - `Rare-ID/rare-platform-ts`
+
+公开仓独立发布还需要各自补配置：
+
+- `Rare-ID/rare-protocol-py`
+  - GitHub environment: `pypi`
+  - PyPI trusted publisher
+- `Rare-ID/rare-agent-python`
+  - GitHub environment: `pypi`
+  - PyPI trusted publisher
+- `Rare-ID/rare-platform-ts`
+  - GitHub secret: `NPM_TOKEN`
 
 ### Phase 2: Promote Rare-ID Public Repos To Canonical OSS Sources
 
