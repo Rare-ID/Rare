@@ -23,8 +23,6 @@ Use this skill when an agent needs to:
 - complete Rare challenge login against a platform
 - sign delegated actions after login
 
-Do not use this skill for platform-side verification logic. That belongs in [FOR_PLATFORM.md](/Volumes/ST7/Projects/Rare/FOR_PLATFORM.md).
-
 ## What The Agent Needs
 
 - A Rare API base URL
@@ -34,7 +32,7 @@ Do not use this skill for platform-side verification logic. That belongs in [FOR
 - A writable local environment
   - Python `3.11+`
   - permission to create or update local SDK state
-- If logging into a platform later:
+- If logging into a platform:
   - the platform audience string `aud`
   - the platform base URL
 - If requesting `L1`:
@@ -43,34 +41,23 @@ Do not use this skill for platform-side verification logic. That belongs in [FOR
   - a supported social provider
   - current Beta recommendation: `github`
 
-## Ask For Inputs Just-In-Time
+## Inputs The Agent Must Ask For
 
-Do not ask for every possible input at the start.
-Ask only for the next values needed to make progress.
-
-### Inputs needed up front
-
-If the user did not provide these values, ask for them before registration:
+If the user did not provide these values, ask for them before executing the corresponding step:
 
 - `rare_base_url`
   - default production value: `https://api.rareid.cc`
 - `name`
   - initial display name for registration
-
-### Ask later only if the workflow requires it
-
 - `email`
   - only required for `L1`
 - `provider`
   - only required for `L2`
   - default Beta provider: `github`
 - `platform_base_url`
-  - required only when the user wants platform login or platform-bound attestation
+  - required for platform login
 - `aud`
-  - required only when the user wants platform login or full attestation
-  - this is the platform audience string that identifies the target platform to Rare
-  - think of it as the platform identifier expected inside the attestation or login flow
-  - example: if a platform says "use aud `platform-demo`", then the agent must use exactly `platform-demo`
+  - required for full attestation or platform login
 
 ## What The Agent Can And Cannot Fully Automate
 
@@ -94,20 +81,6 @@ The agent cannot fully complete without external help:
   - only if the platform itself is not running or not reachable
 
 Do not claim the flow is fully complete until those external steps are actually done.
-
-## Prompting Policy
-
-Prefer this interaction order:
-
-1. Confirm Rare API URL if it was not given.
-2. Register identity first.
-3. Only after registration succeeds, ask whether the user wants:
-   - trust upgrade
-   - platform login
-   - attestation issuance
-4. Ask for `aud`, `platform_base_url`, `email`, or `provider` only when that specific branch is chosen.
-
-This keeps the first interaction minimal and avoids blocking registration on platform details.
 
 ## Default Decisions
 
@@ -225,23 +198,16 @@ When acting independently, use this order:
 
 1. Confirm `rare_base_url`
 2. Install or verify `rare-agent-sdk`
-3. Ask for `name` if it was not provided
-4. Register with `hosted-signer` unless self-custody was explicitly requested
-5. Run `show-state` and confirm an `agent_id` exists
-6. Ask what the user wants next:
-   - stop at registered identity
-   - raise trust
-   - issue attestation
-   - log into a platform
-7. If platform login or full attestation is required:
+3. Register with `hosted-signer` unless self-custody was explicitly requested
+4. Run `show-state` and confirm an `agent_id` exists
+5. If platform login is required:
    - collect `platform_base_url` and `aud`
-   - explain `aud` if the user did not know it
    - choose `public-only` first unless the user explicitly requires full attestation
-8. If higher trust is required:
+6. If higher trust is required:
    - request `L1` or `L2`
    - stop and wait for the real-world verification step to finish
-9. Re-check `upgrade-status`
-10. Only after success, issue attestation or perform platform login
+7. Re-check `upgrade-status`
+8. Only after success, issue attestation or perform platform login
 
 ## Hosted vs Self-Hosted
 

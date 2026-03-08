@@ -1,0 +1,17 @@
+.git
+.gitignore
+.venv
+venv
+__pycache__/
+.pytest_cache/
+htmlcov/
+out/
+node_modules/
+rare-platform-kit-ts/node_modules/
+rare-platform-kit-ts/.turbo/
+*.py[cod]
+*.pyo
+*.pyd
+*.tfstate
+*.tfstate.*
+.terraform/

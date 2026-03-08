@@ -22,3 +22,11 @@ htmlcov/
 build/
 dist/
 *.egg-info/
+
+# Terraform local state
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+terraform.tfvars
+*.tfplan

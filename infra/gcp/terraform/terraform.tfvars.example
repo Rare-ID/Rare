@@ -1,0 +1,13 @@
+project_id           = "your-gcp-project"
+region               = "us-central1"
+environment          = "staging"
+service_name         = "rare-core-api"
+api_domain           = "api.staging.example.com"
+image                = "us-central1-docker.pkg.dev/your-gcp-project/rare-core-api-staging-containers/rare-core-api:latest"
+vpc_network          = "shared-vpc"
+vpc_subnetwork       = "shared-subnet-us-central1"
+sendgrid_api_key     = null
+sendgrid_from_email  = "rare@example.com"
+github_client_id     = "replace-me"
+github_client_secret = "replace-me"
+admin_token          = "replace-me"
