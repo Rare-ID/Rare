@@ -22,6 +22,11 @@ Rare 是一个面向 AI Agent 的身份与信任基础设施，目标是让 Agen
 - 五包工作区（`rare-identity-protocol-python`、`rare-identity-verifier-python`、`rare-identity-core`、`rare-agent-sdk-python`、`rare-platform-kit-ts`）
 - **关键**：当前仓库已切换到 split-repo 工作区，无旧命名兼容层
 - Python 包依赖链：`rare-agent-sdk-python -> rare-identity-protocol`，`rare-identity-core -> rare-identity-protocol + rare-identity-verifier`
+- 仓库拓扑：
+  - 私有运营主仓：`Rare-Sors/Rare`
+  - 公开 OSS 仓：`Rare-ID/rare-protocol-py`、`Rare-ID/rare-agent-python`、`Rare-ID/rare-platform-ts`
+  - 当前开发主入口仍是这个私有工作区；公开仓由同步 workflow 自动更新
+- 当前生产 Rare API：`https://api.rareid.cc`
 
 ---
 
@@ -161,9 +166,18 @@ rare show-state
 │   ├── packages/platform-kit-web/       # Web 标准适配与登录编排
 │   ├── packages/platform-kit-client/    # Rare API typed client
 │   └── packages/platform-kit-redis/     # Redis 存储适配
+├── public-oss/                          # 公开仓 README / CI / publish workflow 模板
+├── out/public-repos/                    # 同步/拆分脚本生成的临时镜像，可删除后重建
 ├── scripts/test_all.sh                  # 工作区测试入口
 └── docs/                                # 根文档（用户流程、平台接入流程）
 ```
+
+补充说明：
+
+- `out/` 不是源码目录，而是 `scripts/split_repos.sh`、`scripts/verify_split_repos.sh`、`scripts/publish_public_repos.sh` 等脚本使用的生成产物目录
+- `out/` 可以安全删除；需要时脚本会重新生成
+- 正式发布流程以 [docs/release-sop.md](/Volumes/ST7/Projects/Rare/docs/release-sop.md) 为准
+- 运维现状、GCP、Cloudflare、GitHub secrets 以 [docs/ops-inventory.md](/Volumes/ST7/Projects/Rare/docs/ops-inventory.md) 为准
 
 ---
 
@@ -248,3 +262,4 @@ pip install pytest-cov
 2. 运行 `./scripts/test_all.sh`
 3. 运行构建与检查命令（至少 `compileall`）
 4. 涉及协议字段/签名串变更时，同步更新 RIP 文档与跨仓集成测试
+5. 涉及 SDK / 公开仓发布时，按 `docs/release-sop.md` 执行，不要直接在私有主仓把“同步”和“发版”混成一步
