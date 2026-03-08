@@ -30,6 +30,14 @@ log() {
   printf '[sync-public-oss] %s\n' "$*"
 }
 
+remove_junk() {
+  local repo_dir="$1"
+
+  rm -rf \
+    "$repo_dir/.DS_Store" \
+    "$repo_dir/.coverage"
+}
+
 clone_repo() {
   local repo_name="$1"
   local repo_dir="$WORK_DIR/$repo_name"
@@ -88,6 +96,8 @@ sync_protocol_repo() {
   local repo_dir
   repo_dir="$(clone_repo "rare-protocol-py")"
 
+  remove_junk "$repo_dir"
+
   copy_dir "$repo_dir" "rare-identity-protocol-python/src/rare_identity_protocol" "src/rare_identity_protocol"
   copy_dir "$repo_dir" "rare-identity-verifier-python/src/rare_identity_verifier" "src/rare_identity_verifier"
 
@@ -115,6 +125,8 @@ sync_agent_repo() {
   local repo_dir
   repo_dir="$(clone_repo "rare-agent-python")"
 
+  remove_junk "$repo_dir"
+
   copy_file "$repo_dir" "rare-agent-sdk-python/README.md" "README.md"
   copy_file "$repo_dir" "rare-agent-sdk-python/pyproject.toml" "pyproject.toml"
   copy_file "$repo_dir" "rare-agent-sdk-python/requirements.lock" "requirements.lock"
@@ -128,6 +140,8 @@ sync_agent_repo() {
 sync_platform_repo() {
   local repo_dir
   repo_dir="$(clone_repo "rare-platform-ts")"
+
+  remove_junk "$repo_dir"
 
   copy_file "$repo_dir" "rare-platform-kit-ts/README.md" "README.md"
   copy_file "$repo_dir" "rare-platform-kit-ts/QUICKSTART.md" "QUICKSTART.md"

@@ -37,6 +37,7 @@ pnpm -r typecheck
 
 - 所有适配包已包含最小契约测试，`pnpm -r test` 会真实执行并对失败返回非零退出码。
 - 生产集成前建议阅读：
-  - `../rare-identity-core/docs/rip-0005-platform-onboarding-and-events.md`
   - `./QUICKSTART.md`
   - `./FULL_MODE_GUIDE.md`
+  - `./EVENTS_GUIDE.md`
+  - `Rare-ID/rare-protocol-py` 中的 RIP 文档

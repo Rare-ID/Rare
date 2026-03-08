@@ -19,7 +19,7 @@ import {
   createRarePlatformKit,
 } from "@rare-id/platform-kit-web";
 
-const rare = new RareApiClient({ rareBaseUrl: "http://127.0.0.1:8000/rare" });
+const rare = new RareApiClient({ rareBaseUrl: "https://api.rareid.cc" });
 const kit = createRarePlatformKit({
   aud: "platform",
   rareApiClient: rare,
@@ -61,3 +61,5 @@ const login = await kit.completeAuth({
 rare register --name alice
 rare login --aud platform --platform-url http://127.0.0.1:8000/platform --public-only
 ```
+
+本地联调时也可以改回自建 Rare Core URL，例如 `http://127.0.0.1:8000`。
