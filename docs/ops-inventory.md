@@ -33,6 +33,8 @@
   - SDK 发布说明
 - `docs/oss-split-plan.md`
   - 公开仓/私有仓拆分建议
+- `docs/release-sop.md`
+  - 正式发布 SOP
 - `public-oss/`
   - 公开仓 README / CI / release workflow 模板
 - `FOR_AGENT.md`
@@ -177,8 +179,9 @@
 1. 在 `Rare-Sors/Rare` 修改代码
 2. 更新对应包的版本号
 3. 合并到 `main`
-4. GitHub Actions 自动运行测试、发布或部署
-5. 发布后验证：
+4. GitHub Actions 自动同步到 `Rare-ID` 公开仓，或自动部署 Rare Core
+5. 在对应公开仓创建 GitHub Release，触发独立发布
+6. 发布后验证：
    - `npm dist-tag ls @rare-id/<package>`
    - `python -m pip index versions rare-agent-sdk`
    - `curl https://api.rareid.cc/healthz`

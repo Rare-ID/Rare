@@ -71,6 +71,7 @@ python -m compileall rare-identity-protocol-python rare-identity-verifier-python
 - `FOR_PLATFORM.md`: Minimal guide for platform integration (auth, action verification, onboarding, event ingest)
 - `docs/deployment-gcp.md`: GCP external beta deployment assets and runtime contract
 - `docs/sdk-release.md`: Python SDK / TypeScript Platform Kit release guide
+- `docs/release-sop.md`: 正式发布 SOP（私有主仓 -> 公开仓 -> PyPI/npm）
 - `rare-identity-core/docs/RIP_INDEX.md`: RIP 文档导航
 - `rare-identity-protocol-python/README.md`: Python 协议包说明
 - `rare-identity-verifier-python/README.md`: Python verifier 包说明
