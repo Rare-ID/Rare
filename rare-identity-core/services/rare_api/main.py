@@ -166,6 +166,30 @@ class HostedManagementTokenRequest(BaseModel):
     agent_id: str
 
 
+class HostedManagementRecoveryEmailSendRequest(BaseModel):
+    agent_id: str
+
+
+class HostedManagementRecoveryEmailVerifyRequest(BaseModel):
+    token: str = Field(min_length=1, max_length=256)
+
+
+class HostedManagementRecoverySocialStartRequest(BaseModel):
+    agent_id: str
+    provider: Literal["x", "github", "linkedin"]
+
+
+class HostedManagementRecoverySocialCompleteRequest(BaseModel):
+    agent_id: str
+    provider: Literal["x", "github", "linkedin"]
+    provider_user_snapshot: dict[str, Any]
+
+    @field_validator("provider_user_snapshot")
+    @classmethod
+    def _validate_provider_user_snapshot(cls, value: dict[str, Any]) -> dict[str, Any]:
+        return _validate_dynamic_object(value, field_name="provider_user_snapshot")
+
+
 class SignDelegationRequest(BaseModel):
     agent_id: str
     session_pubkey: str
@@ -248,6 +272,7 @@ class UpgradeRequestCreate(BaseModel):
     expires_at: int
     signature_by_agent: str
     contact_email: str | None = None
+    send_email: bool = True
 
 
 class UpgradeL1SendLinkRequest(BaseModel):
@@ -782,6 +807,67 @@ def create_app(service: RareService | None = None, *, admin_token: str | None = 
         except Exception as exc:  # noqa: BLE001
             _raise_http(exc)
 
+    @app.get("/v1/signer/recovery/factors/{agent_id}")
+    def get_management_recovery_factors(agent_id: str) -> dict:
+        try:
+            return rare_service.get_hosted_management_recovery_factors(agent_id=agent_id)
+        except Exception as exc:  # noqa: BLE001
+            _raise_http(exc)
+
+    @app.post("/v1/signer/recovery/email/send-link")
+    def send_management_recovery_email_link(
+        request: HostedManagementRecoveryEmailSendRequest,
+        request_meta: Request,
+    ) -> dict:
+        try:
+            client_id = request_meta.client.host if request_meta.client and request_meta.client.host else "unknown"
+            rare_service.enforce_public_write_limit(operation="recovery_email_send", client_id=client_id)
+            return rare_service.send_hosted_management_recovery_email_link(agent_id=request.agent_id)
+        except Exception as exc:  # noqa: BLE001
+            _raise_http(exc)
+
+    @app.post("/v1/signer/recovery/email/verify")
+    def verify_management_recovery_email(request: HostedManagementRecoveryEmailVerifyRequest) -> dict:
+        try:
+            return rare_service.verify_hosted_management_recovery_email(token=request.token)
+        except Exception as exc:  # noqa: BLE001
+            _raise_http(exc)
+
+    @app.get("/v1/signer/recovery/email/verify")
+    def verify_management_recovery_email_legacy(token: str = Query(...)) -> dict:
+        try:
+            return rare_service.verify_hosted_management_recovery_email(token=token)
+        except Exception as exc:  # noqa: BLE001
+            _raise_http(exc)
+
+    @app.post("/v1/signer/recovery/social/start")
+    def start_management_recovery_social(
+        request: HostedManagementRecoverySocialStartRequest,
+        request_meta: Request,
+    ) -> dict:
+        try:
+            client_id = request_meta.client.host if request_meta.client and request_meta.client.host else "unknown"
+            rare_service.enforce_public_write_limit(operation="recovery_social_start", client_id=client_id)
+            return rare_service.start_hosted_management_recovery_social(
+                agent_id=request.agent_id,
+                provider=request.provider,
+            )
+        except Exception as exc:  # noqa: BLE001
+            _raise_http(exc)
+
+    @app.post("/v1/signer/recovery/social/complete")
+    def complete_management_recovery_social(
+        request: HostedManagementRecoverySocialCompleteRequest,
+    ) -> dict:
+        try:
+            return rare_service.complete_hosted_management_recovery_social(
+                agent_id=request.agent_id,
+                provider=request.provider,
+                provider_user_snapshot=request.provider_user_snapshot,
+            )
+        except Exception as exc:  # noqa: BLE001
+            _raise_http(exc)
+
     @app.get("/v1/identity-library/profiles/{agent_id}")
     def get_identity_profile(agent_id: str) -> dict:
         try:
@@ -923,6 +1009,7 @@ def create_app(service: RareService | None = None, *, admin_token: str | None = 
                 expires_at=request.expires_at,
                 signature_by_agent=request.signature_by_agent,
                 contact_email=request.contact_email,
+                send_email=request.send_email,
             )
         except Exception as exc:  # noqa: BLE001
             _raise_http(exc)
@@ -1052,7 +1139,28 @@ def create_app(service: RareService | None = None, *, admin_token: str | None = 
         state: str = Query(...),
     ) -> dict:
         try:
+            if rare_service.has_hosted_management_recovery_oauth_state(state=state):
+                return rare_service.complete_hosted_management_recovery_social_callback(
+                    provider=provider,
+                    code=code,
+                    state=state,
+                )
             return rare_service.social_callback_upgrade_l2(
+                provider=provider,
+                code=code,
+                state=state,
+            )
+        except Exception as exc:  # noqa: BLE001
+            _raise_http(exc)
+
+    @app.get("/v1/signer/recovery/social/callback")
+    def social_callback_management_recovery(
+        provider: Literal["x", "github", "linkedin"] = Query(...),
+        code: str = Query(...),
+        state: str = Query(...),
+    ) -> dict:
+        try:
+            return rare_service.complete_hosted_management_recovery_social_callback(
                 provider=provider,
                 code=code,
                 state=state,

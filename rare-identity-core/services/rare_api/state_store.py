@@ -723,6 +723,8 @@ class InMemoryUpgradeStore:
     upgrade_requests: dict[str, Any]
     upgrade_magic_links: ExpiringMap[str, Any]
     upgrade_oauth_states: ExpiringMap[str, Any]
+    management_recovery_email_links: ExpiringMap[str, Any]
+    management_recovery_oauth_states: ExpiringMap[str, Any]
 
 
 @dataclass
@@ -775,6 +777,8 @@ class RareStateHandles:
     upgrade_requests: dict[str, Any]
     upgrade_magic_links: ExpiringMap[str, Any]
     upgrade_oauth_states: ExpiringMap[str, Any]
+    management_recovery_email_links: ExpiringMap[str, Any]
+    management_recovery_oauth_states: ExpiringMap[str, Any]
 
 
 class StateStore(Protocol):
@@ -818,6 +822,8 @@ def _new_upgrade_store(*, challenge_cache_capacity: int) -> InMemoryUpgradeStore
         upgrade_requests={},
         upgrade_magic_links=ExpiringMap(capacity=challenge_cache_capacity),
         upgrade_oauth_states=ExpiringMap(capacity=challenge_cache_capacity),
+        management_recovery_email_links=ExpiringMap(capacity=challenge_cache_capacity),
+        management_recovery_oauth_states=ExpiringMap(capacity=challenge_cache_capacity),
     )
 
 
@@ -883,6 +889,8 @@ def _compose_handles(
         upgrade_requests=upgrade_store.upgrade_requests,
         upgrade_magic_links=upgrade_store.upgrade_magic_links,
         upgrade_oauth_states=upgrade_store.upgrade_oauth_states,
+        management_recovery_email_links=upgrade_store.management_recovery_email_links,
+        management_recovery_oauth_states=upgrade_store.management_recovery_oauth_states,
     )
 
 

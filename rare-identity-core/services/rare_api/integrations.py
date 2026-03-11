@@ -120,11 +120,37 @@ class EmailProvider(Protocol):
     ) -> dict[str, Any]:
         """Send the upgrade link and return provider metadata."""
 
+    def send_management_recovery_link(
+        self,
+        *,
+        recipient_hint: str,
+        agent_id: str,
+        verify_url: str,
+        expires_at: int,
+    ) -> dict[str, Any]:
+        """Send the hosted management token recovery link and return provider metadata."""
+
     def readiness(self) -> dict[str, Any]:
         """Return runtime readiness information for the email provider."""
 
 
 class NoopEmailProvider:
+    @staticmethod
+    def _build_response(
+        *,
+        recipient_hint: str,
+        verify_url: str,
+        expires_at: int,
+        extra: dict[str, Any],
+    ) -> dict[str, Any]:
+        return {
+            "provider": "noop",
+            "recipient_hint": recipient_hint,
+            "verify_url": verify_url,
+            "expires_at": expires_at,
+            **extra,
+        }
+
     def send_upgrade_link(
         self,
         *,
@@ -133,13 +159,27 @@ class NoopEmailProvider:
         verify_url: str,
         expires_at: int,
     ) -> dict[str, Any]:
-        return {
-            "provider": "noop",
-            "recipient_hint": recipient_hint,
-            "upgrade_request_id": upgrade_request_id,
-            "verify_url": verify_url,
-            "expires_at": expires_at,
-        }
+        return self._build_response(
+            recipient_hint=recipient_hint,
+            verify_url=verify_url,
+            expires_at=expires_at,
+            extra={"upgrade_request_id": upgrade_request_id},
+        )
+
+    def send_management_recovery_link(
+        self,
+        *,
+        recipient_hint: str,
+        agent_id: str,
+        verify_url: str,
+        expires_at: int,
+    ) -> dict[str, Any]:
+        return self._build_response(
+            recipient_hint=recipient_hint,
+            verify_url=verify_url,
+            expires_at=expires_at,
+            extra={"agent_id": agent_id},
+        )
 
     def readiness(self) -> dict[str, Any]:
         return {"status": "ok", "backend": "noop"}
@@ -159,18 +199,61 @@ class SendGridEmailProvider:
         verify_url: str,
         expires_at: int,
     ) -> dict[str, Any]:
+        response = self._send_mail(
+            recipient_hint=recipient_hint,
+            subject="Rare identity upgrade verification",
+            text_body=(
+                f"Open the following link to verify the upgrade request {upgrade_request_id}.\n\n"
+                f"{verify_url}\n\n"
+                f"Expires at: {expires_at}"
+            ),
+        )
+        return {
+            **response,
+            "upgrade_request_id": upgrade_request_id,
+            "verify_url": verify_url,
+            "expires_at": expires_at,
+        }
+
+    def send_management_recovery_link(
+        self,
+        *,
+        recipient_hint: str,
+        agent_id: str,
+        verify_url: str,
+        expires_at: int,
+    ) -> dict[str, Any]:
+        response = self._send_mail(
+            recipient_hint=recipient_hint,
+            subject="Rare hosted token recovery",
+            text_body=(
+                f"Open the following link to recover the hosted management token for agent {agent_id}.\n\n"
+                f"{verify_url}\n\n"
+                f"Expires at: {expires_at}"
+            ),
+        )
+        return {
+            **response,
+            "agent_id": agent_id,
+            "verify_url": verify_url,
+            "expires_at": expires_at,
+        }
+
+    def _send_mail(
+        self,
+        *,
+        recipient_hint: str,
+        subject: str,
+        text_body: str,
+    ) -> dict[str, Any]:
         payload = {
             "personalizations": [{"to": [{"email": recipient_hint}]}],
             "from": {"email": self.from_email},
-            "subject": "Rare identity upgrade verification",
+            "subject": subject,
             "content": [
                 {
                     "type": "text/plain",
-                    "value": (
-                        f"Open the following link to verify the upgrade request {upgrade_request_id}.\n\n"
-                        f"{verify_url}\n\n"
-                        f"Expires at: {expires_at}"
-                    ),
+                    "value": text_body,
                 }
             ],
         }
@@ -180,9 +263,6 @@ class SendGridEmailProvider:
         return {
             "provider": "sendgrid",
             "recipient_hint": recipient_hint,
-            "upgrade_request_id": upgrade_request_id,
-            "verify_url": verify_url,
-            "expires_at": expires_at,
             "from_email": self.from_email,
             "delivery_status": "queued",
             "provider_request_id": request_id,

@@ -624,8 +624,11 @@ def test_upgrade_l1_magic_link_flow_and_nonce_replay(env: dict) -> None:
         json={**signed, "contact_email": "owner@example.com"},
     )
     assert created.status_code == 200
-    assert created.json()["status"] == "human_pending"
-    assert created.json()["next_step"] == "verify_email"
+    created_body = created.json()
+    assert created_body["status"] == "human_pending"
+    assert created_body["next_step"] == "verify_email"
+    assert created_body["email_delivery"]["state"] == "queued"
+    assert created_body["email_delivery"]["attempt_count"] == 1
 
     replay = client.post(
         "/v1/upgrades/requests",
@@ -643,8 +646,10 @@ def test_upgrade_l1_magic_link_flow_and_nonce_replay(env: dict) -> None:
         headers=hosted_headers(agent),
     )
     assert sent.status_code == 200
-    assert "?" not in sent.json()["magic_link"]
-    token = sent.json()["token"]
+    sent_body = sent.json()
+    assert "?" not in sent_body["magic_link"]
+    assert sent_body["email_delivery"]["attempt_count"] == 2
+    token = sent_body["token"]
     verified = client.post("/v1/upgrades/l1/email/verify", json={"token": token})
     assert verified.status_code == 200
     assert verified.json()["status"] == "upgraded"
@@ -662,6 +667,68 @@ def test_upgrade_l1_magic_link_flow_and_nonce_replay(env: dict) -> None:
 
     reused = client.post("/v1/upgrades/l1/email/verify", json={"token": token})
     assert reused.status_code == 400
+
+
+def test_upgrade_l1_request_can_skip_auto_send_and_reports_delivery_failure() -> None:
+    class FailingEmailProvider:
+        def send_upgrade_link(
+            self,
+            *,
+            recipient_hint: str,
+            upgrade_request_id: str,
+            verify_url: str,
+            expires_at: int,
+        ) -> dict:
+            raise RuntimeError("email backend unavailable")
+
+        def readiness(self) -> dict[str, str]:
+            return {"status": "error", "backend": "failing-email"}
+
+    service = RareService(allow_local_upgrade_shortcuts=True, email_provider=FailingEmailProvider())
+    client = TestClient(create_app(service))
+    agent = register_agent(client, "upgrade-l1-failing")
+
+    failed_request = "upg-l1-failed-delivery"
+    failed_signed = sign_hosted_upgrade_request(
+        client,
+        agent_id=agent.agent_id,
+        target_level="L1",
+        request_id=failed_request,
+        hosted_management_token=agent.hosted_management_token or "",
+    )
+    created_failed = client.post(
+        "/v1/upgrades/requests",
+        json={**failed_signed, "contact_email": "owner-fail@example.com"},
+    )
+    assert created_failed.status_code == 200
+    failed_body = created_failed.json()
+    assert failed_body["email_delivery"]["state"] == "failed"
+    assert failed_body["email_delivery"]["attempt_count"] == 1
+    assert failed_body["email_delivery"]["last_error_code"] == "email_delivery_runtimeerror"
+
+    status_failed = client.get(
+        f"/v1/upgrades/requests/{failed_request}",
+        headers=hosted_headers(agent),
+    )
+    assert status_failed.status_code == 200
+    assert status_failed.json()["email_delivery"]["state"] == "failed"
+
+    skipped_request = "upg-l1-manual-send"
+    skipped_signed = sign_hosted_upgrade_request(
+        client,
+        agent_id=agent.agent_id,
+        target_level="L1",
+        request_id=skipped_request,
+        hosted_management_token=agent.hosted_management_token or "",
+    )
+    created_skipped = client.post(
+        "/v1/upgrades/requests",
+        json={**skipped_signed, "contact_email": "owner-skip@example.com", "send_email": False},
+    )
+    assert created_skipped.status_code == 200
+    skipped_body = created_skipped.json()
+    assert skipped_body["email_delivery"]["state"] == "not_requested"
+    assert skipped_body["email_delivery"]["attempt_count"] == 0
 
 
 def test_upgrade_request_rejects_invalid_signature(env: dict) -> None:
@@ -697,6 +764,126 @@ def test_upgrade_request_rejects_invalid_signature(env: dict) -> None:
         },
     )
     assert forged.status_code == 401
+
+
+def test_hosted_management_token_can_be_recovered_via_email_factor(env: dict) -> None:
+    client = env["client"]
+    service = env["service"]
+    agent = register_agent(client, "recover-email-agent")
+
+    request_id = "recover-email-upgrade"
+    signed = sign_hosted_upgrade_request(
+        client,
+        agent_id=agent.agent_id,
+        target_level="L1",
+        request_id=request_id,
+        hosted_management_token=agent.hosted_management_token or "",
+    )
+    upgraded = client.post("/v1/upgrades/requests", json={**signed, "contact_email": "recover@example.com"})
+    assert upgraded.status_code == 200
+    verified = client.post("/v1/upgrades/l1/email/verify", json={"token": upgraded.json()["token"]})
+    assert verified.status_code == 200
+
+    factors = client.get(f"/v1/signer/recovery/factors/{agent.agent_id}")
+    assert factors.status_code == 200
+    factor_body = factors.json()
+    assert factor_body["available_factors"][0]["type"] == "email"
+    assert factor_body["available_factors"][0]["contact"] == "r*****r@example.com"
+
+    expired = service.hosted_management_tokens[agent.agent_id]
+    expired.expires_at = now_ts() - 1
+
+    status_with_old_token = client.get(
+        f"/v1/upgrades/requests/{request_id}",
+        headers=hosted_headers(agent),
+    )
+    assert status_with_old_token.status_code == 403
+
+    sent = client.post("/v1/signer/recovery/email/send-link", json={"agent_id": agent.agent_id})
+    assert sent.status_code == 200
+    recovered = client.post("/v1/signer/recovery/email/verify", json={"token": sent.json()["token"]})
+    assert recovered.status_code == 200
+    recovered_body = recovered.json()
+    assert recovered_body["recovered"] is True
+    assert recovered_body["recovery_factor"] == "email"
+
+    recovered_status = client.get(
+        f"/v1/upgrades/requests/{request_id}",
+        headers={"Authorization": f"Bearer {recovered_body['hosted_management_token']}"},
+    )
+    assert recovered_status.status_code == 200
+
+
+def test_hosted_management_token_social_recovery_requires_linked_account(env: dict) -> None:
+    client = env["client"]
+    agent = register_agent(client, "recover-social-agent")
+
+    l1_request_id = "recover-social-l1"
+    signed_l1 = sign_hosted_upgrade_request(
+        client,
+        agent_id=agent.agent_id,
+        target_level="L1",
+        request_id=l1_request_id,
+        hosted_management_token=agent.hosted_management_token or "",
+    )
+    created_l1 = client.post("/v1/upgrades/requests", json={**signed_l1, "contact_email": "recover-social@example.com"})
+    assert created_l1.status_code == 200
+    verified_l1 = client.post("/v1/upgrades/l1/email/verify", json={"token": created_l1.json()["token"]})
+    assert verified_l1.status_code == 200
+
+    l2_request_id = "recover-social-l2"
+    signed_l2 = sign_hosted_upgrade_request(
+        client,
+        agent_id=agent.agent_id,
+        target_level="L2",
+        request_id=l2_request_id,
+        hosted_management_token=agent.hosted_management_token or "",
+    )
+    created_l2 = client.post("/v1/upgrades/requests", json=signed_l2)
+    assert created_l2.status_code == 200
+    completed_l2 = client.post(
+        "/v1/upgrades/l2/social/complete",
+        json={
+            "upgrade_request_id": l2_request_id,
+            "provider": "github",
+            "provider_user_snapshot": {"id": "42", "login": "rare-dev"},
+        },
+        headers=hosted_headers(agent),
+    )
+    assert completed_l2.status_code == 200
+
+    factors = client.get(f"/v1/signer/recovery/factors/{agent.agent_id}")
+    assert factors.status_code == 200
+    factor_types = {(item["type"], item.get("provider")) for item in factors.json()["available_factors"]}
+    assert ("email", None) in factor_types
+    assert ("social", "github") in factor_types
+
+    started = client.post(
+        "/v1/signer/recovery/social/start",
+        json={"agent_id": agent.agent_id, "provider": "github"},
+    )
+    assert started.status_code == 200
+
+    wrong = client.post(
+        "/v1/signer/recovery/social/complete",
+        json={
+            "agent_id": agent.agent_id,
+            "provider": "github",
+            "provider_user_snapshot": {"id": "777", "login": "intruder"},
+        },
+    )
+    assert wrong.status_code == 403
+
+    recovered = client.post(
+        "/v1/signer/recovery/social/complete",
+        json={
+            "agent_id": agent.agent_id,
+            "provider": "github",
+            "provider_user_snapshot": {"id": "42", "login": "rare-dev"},
+        },
+    )
+    assert recovered.status_code == 200
+    assert recovered.json()["recovery_factor"] == "social:github"
 
 
 def test_upgrade_l2_requires_l1_and_supports_x_or_github(env: dict) -> None:
@@ -2578,6 +2765,15 @@ def test_sendgrid_provider_sends_real_http_request_shape() -> None:
     assert method == "POST"
     assert url == "https://api.sendgrid.com/v3/mail/send"
     assert kwargs["json"]["personalizations"][0]["to"][0]["email"] == "owner@example.com"
+
+    recovery = provider.send_management_recovery_link(
+        recipient_hint="owner@example.com",
+        agent_id="agent-1",
+        verify_url="https://api.example.com/v1/signer/recovery/email/verify?token=abc",
+        expires_at=123457,
+    )
+    assert recovery["provider"] == "sendgrid"
+    assert recovery["agent_id"] == "agent-1"
 
 
 def test_github_oauth_adapter_builds_and_exchanges_with_real_endpoints() -> None:

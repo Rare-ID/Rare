@@ -85,6 +85,8 @@ class AgentRecord:
     name: str
     level: str = "L0"
     owner_id: str | None = None
+    recovery_email_masked: str | None = None
+    recovery_email_ciphertext: str | None = None
     org_id: str | None = None
     social_accounts: dict[str, dict[str, Any]] = field(default_factory=dict)
     twitter: dict[str, str] | None = None
@@ -194,6 +196,12 @@ class UpgradeRequestRecord:
     social_provider: str | None = None
     social_verified_at: int | None = None
     social_account: dict[str, Any] | None = None
+    email_delivery_state: str = "not_requested"
+    email_delivery_provider: str | None = None
+    email_delivery_attempt_count: int = 0
+    email_delivery_last_attempt_at: int | None = None
+    email_delivery_last_error_code: str | None = None
+    email_delivery_last_error_detail: str | None = None
     failure_reason: str | None = None
     last_transition_at: int = field(default_factory=now_ts)
 
@@ -211,6 +219,25 @@ class UpgradeMagicLinkRecord:
 class UpgradeOAuthStateRecord:
     state: str
     upgrade_request_id: str
+    provider: str
+    expires_at: int
+    used_at: int | None = None
+    created_at: int = field(default_factory=now_ts)
+
+
+@dataclass
+class ManagementRecoveryEmailLinkRecord:
+    token_hash: str
+    agent_id: str
+    expires_at: int
+    used_at: int | None = None
+    created_at: int = field(default_factory=now_ts)
+
+
+@dataclass
+class ManagementRecoveryOAuthStateRecord:
+    state: str
+    agent_id: str
     provider: str
     expires_at: int
     used_at: int | None = None
@@ -346,6 +373,8 @@ class RareService:
         self.upgrade_requests = handles.upgrade_requests
         self.upgrade_magic_links = handles.upgrade_magic_links
         self.upgrade_oauth_states = handles.upgrade_oauth_states
+        self.management_recovery_email_links = handles.management_recovery_email_links
+        self.management_recovery_oauth_states = handles.management_recovery_oauth_states
         self.audit_events: list[AuditEventRecord] = []
         self._snapshot_revision: int | None = None
 
@@ -404,6 +433,11 @@ class RareService:
         if self.public_base_url:
             return self._build_public_url("/v1/upgrades/l1/email/verify", query={"token": token})
         return "https://rare.local/v1/upgrades/l1/email/verify"
+
+    def _build_management_recovery_email_verify_url(self, *, token: str) -> str:
+        if self.public_base_url:
+            return self._build_public_url("/v1/signer/recovery/email/verify", query={"token": token})
+        return "https://rare.local/v1/signer/recovery/email/verify"
 
     def _build_social_callback_url(self, *, provider: str) -> str:
         if self.public_base_url:
@@ -549,6 +583,14 @@ class RareService:
                 self.upgrade_oauth_states,
                 value_serializer=asdict,
             ),
+            "management_recovery_email_links": self._serialize_expiring_map(
+                self.management_recovery_email_links,
+                value_serializer=asdict,
+            ),
+            "management_recovery_oauth_states": self._serialize_expiring_map(
+                self.management_recovery_oauth_states,
+                value_serializer=asdict,
+            ),
             "audit_events": [asdict(record) for record in self.audit_events],
         }
 
@@ -656,6 +698,16 @@ class RareService:
                 self.upgrade_oauth_states,
                 snapshot.get("upgrade_oauth_states", []),
                 value_loader=lambda value: UpgradeOAuthStateRecord(**value),
+            )
+            self._load_expiring_map(
+                self.management_recovery_email_links,
+                snapshot.get("management_recovery_email_links", []),
+                value_loader=lambda value: ManagementRecoveryEmailLinkRecord(**value),
+            )
+            self._load_expiring_map(
+                self.management_recovery_oauth_states,
+                snapshot.get("management_recovery_oauth_states", []),
+                value_loader=lambda value: ManagementRecoveryOAuthStateRecord(**value),
             )
         self.audit_events = [AuditEventRecord(**record) for record in snapshot.get("audit_events", [])]
         self._snapshot_revision = revision
@@ -929,6 +981,7 @@ class RareService:
             "key_mode": record.key_mode,
             "status": record.status,
             "owner_id": record.owner_id,
+            "recovery_email_masked": record.recovery_email_masked,
             "org_id": record.org_id,
             "social_accounts": record.social_accounts,
             "twitter": record.twitter,
@@ -1245,6 +1298,12 @@ class RareService:
     def _cleanup_upgrade_oauth_states(self, now: int) -> None:
         self.upgrade_oauth_states.cleanup(now=now)
 
+    def _cleanup_management_recovery_email_links(self, now: int) -> None:
+        self.management_recovery_email_links.cleanup(now=now)
+
+    def _cleanup_management_recovery_oauth_states(self, now: int) -> None:
+        self.management_recovery_oauth_states.cleanup(now=now)
+
     def _require_upgrade_request(self, upgrade_request_id: str) -> UpgradeRequestRecord:
         now = now_ts()
         self._cleanup_upgrade_requests(now)
@@ -1259,7 +1318,7 @@ class RareService:
         next_step = ""
         if request.status in {"requested", "human_pending"}:
             next_step = "verify_email" if request.target_level == "L1" else "connect_social"
-        return {
+        payload = {
             "upgrade_request_id": request.upgrade_request_id,
             "agent_id": request.agent_id,
             "target_level": request.target_level,
@@ -1270,6 +1329,86 @@ class RareService:
             "contact_email_masked": request.contact_email_masked,
             "social_provider": request.social_provider,
         }
+        if request.target_level == "L1":
+            payload["email_delivery"] = {
+                "state": request.email_delivery_state,
+                "provider": request.email_delivery_provider,
+                "attempt_count": request.email_delivery_attempt_count,
+                "last_attempt_at": request.email_delivery_last_attempt_at,
+                "last_error_code": request.email_delivery_last_error_code,
+                "last_error_detail": request.email_delivery_last_error_detail,
+            }
+        return payload
+
+    @staticmethod
+    def _email_delivery_error_code(exc: Exception) -> str:
+        error_name = exc.__class__.__name__.strip()
+        if not error_name:
+            return "email_delivery_error"
+        return f"email_delivery_{error_name.lower()}"
+
+    def _send_upgrade_l1_email_link_internal(
+        self,
+        *,
+        request: UpgradeRequestRecord,
+    ) -> dict[str, Any]:
+        now = now_ts()
+        self._cleanup_upgrade_magic_links(now)
+        if request.target_level != "L1":
+            raise TokenValidationError("email link is only available for L1 upgrade")
+        if request.status not in {"human_pending", "requested"}:
+            raise TokenValidationError("upgrade request is not waiting for email verification")
+        if not request.contact_email_hash or not request.contact_email_ciphertext:
+            raise TokenValidationError("contact_email missing in upgrade request")
+
+        request.email_delivery_attempt_count += 1
+        request.email_delivery_last_attempt_at = now
+
+        raw_token = generate_nonce(24)
+        token_hash = self._sha256_hex(raw_token)
+        record = UpgradeMagicLinkRecord(
+            token_hash=token_hash,
+            upgrade_request_id=request.upgrade_request_id,
+            expires_at=now + self.magic_link_ttl_seconds,
+        )
+        self.upgrade_magic_links.set(
+            key=token_hash,
+            value=record,
+            expires_at=record.expires_at,
+            now=now,
+        )
+        response = {
+            "upgrade_request_id": request.upgrade_request_id,
+            "sent": True,
+            "expires_at": record.expires_at,
+        }
+        if self.public_base_url or self.allow_local_upgrade_shortcuts:
+            response["magic_link"] = self._build_email_verify_url(token=raw_token)
+            response["verify_endpoint"] = "/v1/upgrades/l1/email/verify"
+        if self.allow_local_upgrade_shortcuts:
+            response["token"] = raw_token
+        try:
+            email_metadata = self.email_provider.send_upgrade_link(
+                recipient_hint=self.hosted_key_cipher.decrypt_text(request.contact_email_ciphertext),
+                upgrade_request_id=request.upgrade_request_id,
+                verify_url=response.get("magic_link", "/v1/upgrades/l1/email/verify"),
+                expires_at=record.expires_at,
+            )
+        except Exception as exc:
+            request.email_delivery_state = "failed"
+            request.email_delivery_provider = self.email_provider.__class__.__name__
+            request.email_delivery_last_error_code = self._email_delivery_error_code(exc)
+            request.email_delivery_last_error_detail = str(exc)
+            raise
+
+        request.email_delivery_state = "queued"
+        request.email_delivery_provider = str(email_metadata.get("provider") or self.email_provider.__class__.__name__)
+        request.email_delivery_last_error_code = None
+        request.email_delivery_last_error_detail = None
+        email_metadata["recipient_hint"] = request.contact_email_masked or "hidden"
+        response["delivery"] = email_metadata
+        response["email_delivery"] = self._upgrade_status_payload(request)["email_delivery"]
+        return response
 
     def require_agent(self, agent_id: str) -> AgentRecord:
         record = self.agents.get(agent_id)
@@ -1300,6 +1439,290 @@ class RareService:
             expires_at=expires_at,
         )
         return token, expires_at
+
+    def _require_hosted_management_recovery_agent(self, *, agent_id: str) -> AgentRecord:
+        record = self.require_agent(agent_id)
+        if record.key_mode != "hosted-signer":
+            raise PermissionError("management token recovery is only available for hosted-signer agents")
+        self._require_hosted_agent_private_key(agent_id)
+        return record
+
+    @staticmethod
+    def _social_snapshot_identity(snapshot: dict[str, Any]) -> tuple[str, str]:
+        provider_user_id = str(
+            snapshot.get("provider_user_id")
+            or snapshot.get("id")
+            or snapshot.get("user_id")
+            or ""
+        ).strip()
+        username_or_handle = str(
+            snapshot.get("username_or_handle")
+            or snapshot.get("handle")
+            or snapshot.get("login")
+            or snapshot.get("vanity_name")
+            or ""
+        ).strip()
+        return provider_user_id, username_or_handle
+
+    def _issue_recovered_hosted_management_token(
+        self,
+        *,
+        agent_id: str,
+        factor: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        next_token, expires_at = self._issue_hosted_management_token(agent_id=agent_id)
+        result = {
+            "agent_id": agent_id,
+            "hosted_management_token": next_token,
+            "hosted_management_token_expires_at": expires_at,
+            "recovered": True,
+            "recovery_factor": factor,
+        }
+        self._append_audit_event(
+            actor_type="agent",
+            actor_id=agent_id,
+            agent_id=agent_id,
+            event_type="hosted_management_token_recover",
+            resource_type="hosted_management_token",
+            resource_id=agent_id,
+            metadata={"factor": factor, **(metadata or {}), "expires_at": expires_at},
+        )
+        return result
+
+    def get_hosted_management_recovery_factors(self, *, agent_id: str) -> dict[str, Any]:
+        self._sync_state()
+        record = self._require_hosted_management_recovery_agent(agent_id=agent_id)
+        factors: list[dict[str, Any]] = []
+        if record.owner_id and record.recovery_email_ciphertext and record.recovery_email_masked:
+            factors.append(
+                {
+                    "type": "email",
+                    "level": "L1" if record.level == "L1" else "L2",
+                    "contact": record.recovery_email_masked,
+                }
+            )
+        if record.level == "L2":
+            for provider, snapshot in sorted(record.social_accounts.items()):
+                if provider not in self.enabled_social_providers:
+                    continue
+                factors.append(
+                    {
+                        "type": "social",
+                        "provider": provider,
+                        "level": "L2",
+                        "handle": snapshot.get("username_or_handle"),
+                    }
+                )
+        preferred_factor = "social" if any(item["type"] == "social" for item in factors) else ("email" if factors else None)
+        return {
+            "agent_id": agent_id,
+            "key_mode": record.key_mode,
+            "level": record.level,
+            "available_factors": factors,
+            "preferred_factor": preferred_factor,
+        }
+
+    def send_hosted_management_recovery_email_link(self, *, agent_id: str) -> dict[str, Any]:
+        self._sync_state()
+        now = now_ts()
+        self._cleanup_management_recovery_email_links(now)
+        record = self._require_hosted_management_recovery_agent(agent_id=agent_id)
+        if not record.owner_id or not record.recovery_email_ciphertext or not record.recovery_email_masked:
+            raise PermissionError("email recovery is not available for this agent")
+
+        raw_token = generate_nonce(24)
+        token_hash = self._sha256_hex(raw_token)
+        recovery = ManagementRecoveryEmailLinkRecord(
+            token_hash=token_hash,
+            agent_id=agent_id,
+            expires_at=now + self.magic_link_ttl_seconds,
+        )
+        self.management_recovery_email_links.set(
+            key=token_hash,
+            value=recovery,
+            expires_at=recovery.expires_at,
+            now=now,
+        )
+        verify_url = "/v1/signer/recovery/email/verify"
+        if self.public_base_url or self.allow_local_upgrade_shortcuts:
+            verify_url = self._build_management_recovery_email_verify_url(token=raw_token)
+        response = {
+            "agent_id": agent_id,
+            "sent": True,
+            "recovery_factor": "email",
+            "contact_email_masked": record.recovery_email_masked,
+            "expires_at": recovery.expires_at,
+            "verify_endpoint": "/v1/signer/recovery/email/verify",
+        }
+        if self.public_base_url or self.allow_local_upgrade_shortcuts:
+            response["magic_link"] = verify_url
+        if self.allow_local_upgrade_shortcuts:
+            response["token"] = raw_token
+
+        metadata = self.email_provider.send_management_recovery_link(
+            recipient_hint=self.hosted_key_cipher.decrypt_text(record.recovery_email_ciphertext),
+            agent_id=agent_id,
+            verify_url=verify_url,
+            expires_at=recovery.expires_at,
+        )
+        metadata["recipient_hint"] = record.recovery_email_masked
+        response["delivery"] = metadata
+        self._append_audit_event(
+            actor_type="agent",
+            actor_id=agent_id,
+            agent_id=agent_id,
+            event_type="hosted_management_token_recovery_email_send",
+            resource_type="hosted_management_token",
+            resource_id=agent_id,
+            metadata={"provider": metadata.get("provider", "unknown")},
+        )
+        return response
+
+    def verify_hosted_management_recovery_email(self, *, token: str) -> dict[str, Any]:
+        self._sync_state()
+        now = now_ts()
+        self._cleanup_management_recovery_email_links(now)
+        token_hash = self._sha256_hex(token)
+        link = self.management_recovery_email_links.get(token_hash)
+        if link is None:
+            raise KeyError("management recovery link not found")
+        if link.used_at is not None:
+            raise TokenValidationError("management recovery link already used")
+        if link.expires_at < now - 30:
+            raise TokenValidationError("management recovery link expired")
+        link.used_at = now
+        return self._issue_recovered_hosted_management_token(
+            agent_id=link.agent_id,
+            factor="email",
+            metadata={"channel": "email"},
+        )
+
+    def start_hosted_management_recovery_social(self, *, agent_id: str, provider: str) -> dict[str, Any]:
+        self._sync_state()
+        now = now_ts()
+        self._cleanup_management_recovery_oauth_states(now)
+        record = self._require_hosted_management_recovery_agent(agent_id=agent_id)
+        normalized_provider = provider.strip().lower()
+        if normalized_provider not in self.enabled_social_providers:
+            raise TokenValidationError(f"provider {normalized_provider} is not enabled")
+        if record.level != "L2":
+            raise PermissionError("social recovery requires L2 agent")
+        if normalized_provider not in record.social_accounts:
+            raise PermissionError(f"{normalized_provider} recovery is not linked for this agent")
+
+        state = generate_nonce(16)
+        recovery_state = ManagementRecoveryOAuthStateRecord(
+            state=state,
+            agent_id=agent_id,
+            provider=normalized_provider,
+            expires_at=now + self.oauth_state_ttl_seconds,
+        )
+        self.management_recovery_oauth_states.set(
+            key=state,
+            value=recovery_state,
+            expires_at=recovery_state.expires_at,
+            now=now,
+        )
+        adapter = self.social_provider_adapters.get(normalized_provider)
+        if adapter is None:
+            raise TokenValidationError(f"provider {normalized_provider} is not enabled")
+        authorize_url = adapter.build_authorize_url(state=state)
+        self._append_audit_event(
+            actor_type="agent",
+            actor_id=agent_id,
+            agent_id=agent_id,
+            event_type="hosted_management_token_recovery_social_start",
+            resource_type="hosted_management_token",
+            resource_id=agent_id,
+            metadata={"provider": normalized_provider},
+        )
+        return {
+            "agent_id": agent_id,
+            "provider": normalized_provider,
+            "recovery_factor": "social",
+            "state": state,
+            "authorize_url": authorize_url,
+            "callback_url": self._build_social_callback_url(provider=normalized_provider),
+            "expires_at": recovery_state.expires_at,
+        }
+
+    def _complete_hosted_management_recovery_social(
+        self,
+        *,
+        agent_id: str,
+        provider: str,
+        provider_user_snapshot: dict[str, Any],
+    ) -> dict[str, Any]:
+        record = self._require_hosted_management_recovery_agent(agent_id=agent_id)
+        linked_snapshot = record.social_accounts.get(provider)
+        if linked_snapshot is None:
+            raise PermissionError(f"{provider} recovery is not linked for this agent")
+        linked_provider_user_id, linked_username = self._social_snapshot_identity(linked_snapshot)
+        provider_user_id, username_or_handle = self._social_snapshot_identity(provider_user_snapshot)
+        if linked_provider_user_id and provider_user_id and linked_provider_user_id != provider_user_id:
+            raise PermissionError("social recovery subject mismatch")
+        if linked_username and username_or_handle and linked_username.lower() != username_or_handle.lower():
+            raise PermissionError("social recovery subject mismatch")
+        return self._issue_recovered_hosted_management_token(
+            agent_id=agent_id,
+            factor=f"social:{provider}",
+            metadata={"provider": provider},
+        )
+
+    def complete_hosted_management_recovery_social_callback(
+        self,
+        *,
+        provider: str,
+        code: str,
+        state: str,
+    ) -> dict[str, Any]:
+        self._sync_state()
+        now = now_ts()
+        self._cleanup_management_recovery_oauth_states(now)
+        recovery_state = self.management_recovery_oauth_states.get(state)
+        if recovery_state is None:
+            raise KeyError("management recovery oauth state not found")
+        if recovery_state.used_at is not None:
+            raise TokenValidationError("management recovery oauth state already used")
+        if recovery_state.expires_at < now - 30:
+            raise TokenValidationError("management recovery oauth state expired")
+        normalized_provider = provider.strip().lower()
+        if recovery_state.provider != normalized_provider:
+            raise TokenValidationError("management recovery provider mismatch")
+        adapter = self.social_provider_adapters.get(normalized_provider)
+        if adapter is None:
+            raise TokenValidationError(f"provider {normalized_provider} is not enabled")
+        provider_user_snapshot = adapter.exchange_code(code=code, state=state)
+        recovery_state.used_at = now
+        return self._complete_hosted_management_recovery_social(
+            agent_id=recovery_state.agent_id,
+            provider=normalized_provider,
+            provider_user_snapshot=provider_user_snapshot,
+        )
+
+    def complete_hosted_management_recovery_social(
+        self,
+        *,
+        agent_id: str,
+        provider: str,
+        provider_user_snapshot: dict[str, Any],
+    ) -> dict[str, Any]:
+        self._sync_state()
+        if not self.allow_local_upgrade_shortcuts:
+            raise PermissionError("local management recovery social shortcut is disabled")
+        normalized_provider = provider.strip().lower()
+        return self._complete_hosted_management_recovery_social(
+            agent_id=agent_id,
+            provider=normalized_provider,
+            provider_user_snapshot=provider_user_snapshot,
+        )
+
+    def has_hosted_management_recovery_oauth_state(self, *, state: str) -> bool:
+        self._sync_state()
+        now = now_ts()
+        self._cleanup_management_recovery_oauth_states(now)
+        return self.management_recovery_oauth_states.get(state) is not None
 
     def authorize_hosted_management(self, *, agent_id: str, token: str) -> None:
         self.require_agent(agent_id)
@@ -1849,6 +2272,7 @@ class RareService:
         expires_at: int,
         signature_by_agent: str,
         contact_email: str | None,
+        send_email: bool = True,
     ) -> dict[str, Any]:
         self._sync_state()
         record = self.require_agent(agent_id)
@@ -1916,7 +2340,6 @@ class RareService:
             resource_name="upgrade request",
         )
         self.upgrade_requests[request_id] = request
-        result = self._upgrade_status_payload(request)
         self._append_audit_event(
             actor_type="agent",
             actor_id=agent_id,
@@ -1924,8 +2347,40 @@ class RareService:
             event_type="upgrade_request_create",
             resource_type="upgrade_request",
             resource_id=request_id,
-            metadata={"target_level": target_level},
+            metadata={"target_level": target_level, "send_email": bool(send_email and target_level == "L1")},
         )
+        result = self._upgrade_status_payload(request)
+        if target_level == "L1" and send_email:
+            try:
+                delivery = self._send_upgrade_l1_email_link_internal(request=request)
+            except Exception as exc:
+                self._append_audit_event(
+                    actor_type="agent",
+                    actor_id=agent_id,
+                    agent_id=agent_id,
+                    event_type="upgrade_l1_send_link",
+                    resource_type="upgrade_request",
+                    resource_id=request_id,
+                    status="error",
+                    metadata={"error_code": request.email_delivery_last_error_code, "detail": str(exc)},
+                )
+            else:
+                self._append_audit_event(
+                    actor_type="agent",
+                    actor_id=agent_id,
+                    agent_id=agent_id,
+                    event_type="upgrade_l1_send_link",
+                    resource_type="upgrade_request",
+                    resource_id=request_id,
+                    metadata={"provider": delivery.get("delivery", {}).get("provider", "unknown"), "auto": True},
+                )
+                result = self._upgrade_status_payload(request)
+                result["delivery"] = delivery.get("delivery")
+                for key in ("magic_link", "verify_endpoint", "token"):
+                    if key in delivery:
+                        result[key] = delivery[key]
+            if "delivery" not in result:
+                result = self._upgrade_status_payload(request)
         return result
 
     def get_upgrade_request(self, *, upgrade_request_id: str) -> dict[str, Any]:
@@ -1988,47 +2443,8 @@ class RareService:
 
     def send_upgrade_l1_email_link(self, *, upgrade_request_id: str) -> dict[str, Any]:
         self._sync_state()
-        now = now_ts()
-        self._cleanup_upgrade_magic_links(now)
         request = self._require_upgrade_request(upgrade_request_id)
-        if request.target_level != "L1":
-            raise TokenValidationError("email link is only available for L1 upgrade")
-        if request.status not in {"human_pending", "requested"}:
-            raise TokenValidationError("upgrade request is not waiting for email verification")
-        if not request.contact_email_hash or not request.contact_email_ciphertext:
-            raise TokenValidationError("contact_email missing in upgrade request")
-
-        raw_token = generate_nonce(24)
-        token_hash = self._sha256_hex(raw_token)
-        record = UpgradeMagicLinkRecord(
-            token_hash=token_hash,
-            upgrade_request_id=upgrade_request_id,
-            expires_at=now + self.magic_link_ttl_seconds,
-        )
-        self.upgrade_magic_links.set(
-            key=token_hash,
-            value=record,
-            expires_at=record.expires_at,
-            now=now,
-        )
-        response = {
-            "upgrade_request_id": upgrade_request_id,
-            "sent": True,
-            "expires_at": record.expires_at,
-        }
-        if self.public_base_url or self.allow_local_upgrade_shortcuts:
-            response["magic_link"] = self._build_email_verify_url(token=raw_token)
-            response["verify_endpoint"] = "/v1/upgrades/l1/email/verify"
-        if self.allow_local_upgrade_shortcuts:
-            response["token"] = raw_token
-        email_metadata = self.email_provider.send_upgrade_link(
-            recipient_hint=self.hosted_key_cipher.decrypt_text(request.contact_email_ciphertext),
-            upgrade_request_id=upgrade_request_id,
-            verify_url=response.get("magic_link", "/v1/upgrades/l1/email/verify"),
-            expires_at=record.expires_at,
-        )
-        email_metadata["recipient_hint"] = request.contact_email_masked or "hidden"
-        response["delivery"] = email_metadata
+        response = self._send_upgrade_l1_email_link_internal(request=request)
         self._append_audit_event(
             actor_type="agent",
             actor_id=request.agent_id,
@@ -2036,7 +2452,7 @@ class RareService:
             event_type="upgrade_l1_send_link",
             resource_type="upgrade_request",
             resource_id=upgrade_request_id,
-            metadata={"provider": email_metadata.get("provider", "unknown")},
+            metadata={"provider": response.get("delivery", {}).get("provider", "unknown"), "auto": False},
         )
         return response
 
@@ -2049,6 +2465,8 @@ class RareService:
             if not request.contact_email_hash:
                 raise TokenValidationError("L1 upgrade missing email verification proof")
             record.owner_id = f"email:{request.contact_email_hash}"
+            record.recovery_email_masked = request.contact_email_masked
+            record.recovery_email_ciphertext = request.contact_email_ciphertext
             if record.level == "L0":
                 record.level = "L1"
             labels = set(profile.labels)
@@ -2129,6 +2547,9 @@ class RareService:
         if request.target_level != "L1":
             raise TokenValidationError("upgrade request target is not L1")
         request.email_verified_at = now
+        request.email_delivery_state = "verified"
+        request.email_delivery_last_error_code = None
+        request.email_delivery_last_error_detail = None
         request.status = "verified"
         request.last_transition_at = now
         link.used_at = now
