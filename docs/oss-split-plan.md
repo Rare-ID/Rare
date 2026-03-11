@@ -188,7 +188,7 @@
 ### Move To `Rare-ID/rare-agent-python`
 
 - `rare-agent-sdk-python/**`
-- `FOR_AGENT.md` 的公开接入部分
+- `skills/rare-agent/` 的公开 skill 内容与 public mirror
 
 ### Move To `Rare-ID/rare-platform-ts`
 

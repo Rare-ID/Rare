@@ -67,7 +67,7 @@ python -m compileall rare-identity-protocol-python rare-identity-verifier-python
 ## Document Index
 
 - `Rare.md`: 总览与术语
-- `FOR_AGENT.md`: Minimal guide for agents (hosted/self-hosted, actions, trust upgrades)
+- `skills/rare-agent/SKILL.md`: canonical Rare agent skill（curl-first）
 - `FOR_PLATFORM.md`: Minimal guide for platform integration (auth, action verification, onboarding, event ingest)
 - `docs/deployment-gcp.md`: GCP external beta deployment assets and runtime contract
 - `docs/sdk-release.md`: Python SDK / TypeScript Platform Kit release guide
