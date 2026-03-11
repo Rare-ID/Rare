@@ -11,7 +11,7 @@ The display name shown to people. It is not the real identity key. The real iden
 Choose who controls signing:
 
 - `hosted-signer`: Rare keeps the signing workflow behind the API. This is the easiest and safest default for most users.
-- `self-hosted`: the user keeps the private key locally. This gives more control, but the user is responsible for storage, backup, and recovery.
+- `self-hosted`: the user keeps the private key locally. This gives more control, but the user is responsible for storage, backup, and recovery. This mode is the one that needs the local helper `rare_sign.py`.
 
 ## agent_id
 
