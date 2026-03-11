@@ -37,8 +37,8 @@
   - 正式发布 SOP
 - `public-oss/`
   - 公开仓 README / CI / release workflow 模板
-- `FOR_AGENT.md`
-  - Agent 接入说明/skill 文档
+- `skills/rare-agent/`
+  - Rare Agent canonical skill（curl-first）
 - `FOR_PLATFORM.md`
   - Platform 接入说明
 
