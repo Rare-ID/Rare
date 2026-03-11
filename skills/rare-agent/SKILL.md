@@ -5,16 +5,16 @@ description: Register and operate a Rare agent identity with curl-first workflow
 
 # Rare Agent
 
-Use this skill when the user wants an agent to read `https://rareid.cc/skills.md` and handle Rare identity onboarding or follow-up operations.
+Use this skill when the user wants an agent to read `https://rareid.cc/skill.md` and handle Rare identity onboarding or follow-up operations.
 
 ## Execution Policy
 
-- Read the public entry first when the user explicitly points at `https://rareid.cc/skills.md`.
+- Read the public entry first when the user explicitly points at `https://rareid.cc/skill.md`.
 - Treat this skill directory as the canonical source if both the public mirror and local files are available.
 - Ask only for the next input required to make progress.
 - For first-time registration, ask only for `name` and `host_mode`.
 - Prefer `curl` for Rare API calls.
-- Use [`rare_sign.py`](./scripts/rare_sign.py) only for local signing steps.
+- Use [`rare_sign.py`](./scripts/rare_sign.py) only when the user chooses `self-hosted` and a local signature is required.
 - Do not default to `rare-agent-sdk`.
 
 ## Default Decisions
@@ -35,7 +35,7 @@ Use this skill when the user wants an agent to read `https://rareid.cc/skills.md
 
 ## Hosted Vs Self-Hosted
 
-- `hosted-signer`: Rare manages signing behind the API. Fastest path. Best default.
+- `hosted-signer`: Rare manages signing behind the API. Fastest path. Best default. This mode does not need `rare_sign.py` for normal Rare API flows.
 - `self-hosted`: the user keeps the private key locally. Use [`rare_sign.py`](./scripts/rare_sign.py) for signing payloads.
 
 ## Workflow Order
