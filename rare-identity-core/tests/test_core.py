@@ -1,15 +1,29 @@
 from __future__ import annotations
 
 import base64
+import builtins
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import pytest
+from cryptography.hazmat.primitives import serialization
 from fastapi.testclient import TestClient
 
-from rare_api.integrations import GitHubOAuthAdapter, LocalAesGcmHostedKeyCipher, SendGridEmailProvider
+from rare_api.integrations import (
+    GcpKmsEd25519JwsSigner,
+    GcpKmsHostedKeyCipher,
+    GitHubOAuthAdapter,
+    LocalAesGcmHostedKeyCipher,
+    LocalEd25519JwsSigner,
+    NoopEmailProvider,
+    PlaintextHostedKeyCipher,
+    resolve_public_dns_txt,
+    SendGridEmailProvider,
+    StubSocialProviderAdapter,
+    default_social_provider_adapters,
+)
 from rare_api.key_provider import EphemeralKeyProvider, FileKeyProvider, GcpSecretManagerKeyProvider
 from rare_api.main import create_app
 from rare_api.service import RareService
@@ -2811,6 +2825,304 @@ def test_gcp_secret_manager_key_provider_persists_keyring_versions() -> None:
     assert len(fake_client.secrets["projects/rare-project/secrets/rare-keyring-test"]) == 1
     readiness = provider.readiness()
     assert readiness["status"] == "ok"
+
+
+def test_plaintext_cipher_and_noop_email_provider_report_ready() -> None:
+    cipher = PlaintextHostedKeyCipher()
+    assert cipher.encrypt_text("rare") == "rare"
+    assert cipher.decrypt_text("rare") == "rare"
+    assert cipher.readiness() == {"status": "ok", "backend": "plaintext"}
+
+    provider = NoopEmailProvider()
+    upgrade = provider.send_upgrade_link(
+        recipient_hint="owner@example.com",
+        upgrade_request_id="upg-1",
+        verify_url="https://example.com/upgrade",
+        expires_at=123,
+    )
+    recovery = provider.send_management_recovery_link(
+        recipient_hint="owner@example.com",
+        agent_id="agent-1",
+        verify_url="https://example.com/recovery",
+        expires_at=456,
+    )
+    assert upgrade["provider"] == "noop"
+    assert upgrade["upgrade_request_id"] == "upg-1"
+    assert recovery["agent_id"] == "agent-1"
+    assert provider.readiness() == {"status": "ok", "backend": "noop"}
+
+
+def test_local_aes_cipher_readiness_and_invalid_key() -> None:
+    with pytest.raises(ValueError, match="AES-GCM key must decode"):
+        LocalAesGcmHostedKeyCipher(key_b64=base64.urlsafe_b64encode(b"short").decode("ascii"))
+
+    cipher = LocalAesGcmHostedKeyCipher(key_b64=base64.urlsafe_b64encode(b"1" * 32).decode("ascii"))
+    encrypted = cipher.encrypt_text("rare-secret")
+    assert cipher.decrypt_text(encrypted) == "rare-secret"
+    assert cipher.readiness() == {"status": "ok", "backend": "aesgcm"}
+
+
+def test_sendgrid_provider_readiness_and_local_signer_roundtrip() -> None:
+    provider = SendGridEmailProvider(api_key="sg-key", from_email="noreply@example.com")
+    assert provider.readiness() == {
+        "status": "ok",
+        "backend": "sendgrid",
+        "from_email": "noreply@example.com",
+    }
+
+    private_key_b64, public_key_b64 = generate_ed25519_keypair()
+    signer = LocalEd25519JwsSigner(kid="kid-local", private_key=load_private_key(private_key_b64))
+    signing_input = b"header.payload"
+    signature = signer.sign_bytes(signing_input)
+    signer.public_key().verify(signature, signing_input)
+    assert public_key_to_b64(signer.public_key()) == public_key_b64
+    assert signer.readiness() == {"status": "ok", "backend": "local", "kid": "kid-local"}
+
+
+def test_stub_social_provider_variants_and_registry() -> None:
+    registry = default_social_provider_adapters()
+    assert set(registry) == {"github", "linkedin", "x"}
+    assert registry["github"].readiness()["backend"] == "stub"
+
+    github_snapshot = StubSocialProviderAdapter(provider="github").exchange_code(code="code", state="state")
+    x_snapshot = StubSocialProviderAdapter(provider="x").exchange_code(code="code", state="state")
+    linkedin_snapshot = StubSocialProviderAdapter(provider="linkedin").exchange_code(code="code", state="state")
+    assert github_snapshot["profile_url"].startswith("https://github.com/")
+    assert x_snapshot["profile_url"].startswith("https://x.com/")
+    assert linkedin_snapshot["profile_url"].startswith("https://www.linkedin.com/in/")
+
+    with pytest.raises(TokenValidationError, match="unsupported social provider"):
+        StubSocialProviderAdapter(provider="mastodon").exchange_code(code="code", state="state")
+
+
+def test_github_oauth_adapter_readiness_and_error_paths() -> None:
+    class MissingTokenHttpClient(FakeHttpClient):
+        def post(self, url: str, **kwargs: dict) -> FakeHttpResponse:
+            self.calls.append(("POST", url, kwargs))
+            return FakeHttpResponse(json_body={})
+
+    class MissingProfileHttpClient(FakeHttpClient):
+        def get(self, url: str, **kwargs: dict) -> FakeHttpResponse:
+            self.calls.append(("GET", url, kwargs))
+            return FakeHttpResponse(json_body={"id": "", "login": ""})
+
+    adapter = GitHubOAuthAdapter(
+        client_id="gh-client",
+        client_secret="gh-secret",
+        redirect_uri="https://api.example.com/v1/upgrades/l2/social/callback?provider=github",
+        http_client=MissingTokenHttpClient(),
+    )
+    assert adapter.readiness()["provider"] == "github"
+    with pytest.raises(TokenValidationError, match="github access token missing"):
+        adapter.exchange_code(code="oauth-code", state="state-123")
+
+    bad_profile_adapter = GitHubOAuthAdapter(
+        client_id="gh-client",
+        client_secret="gh-secret",
+        redirect_uri="https://api.example.com/v1/upgrades/l2/social/callback?provider=github",
+        http_client=MissingProfileHttpClient(),
+    )
+    with pytest.raises(TokenValidationError, match="github user profile missing id/login"):
+        bad_profile_adapter.exchange_code(code="oauth-code", state="state-123")
+
+
+def test_kms_backends_raise_clear_error_without_google_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
+    original_import = builtins.__import__
+
+    def fake_import(name: str, globals=None, locals=None, fromlist=(), level: int = 0):
+        if name == "google.cloud":
+            raise ImportError("blocked for test")
+        return original_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    with pytest.raises(RuntimeError, match="google-cloud-kms is required for GcpKmsHostedKeyCipher"):
+        GcpKmsHostedKeyCipher(key_name="projects/x/locations/y/keyRings/z/cryptoKeys/a")
+
+    with pytest.raises(RuntimeError, match="google-cloud-kms is required for GcpKmsEd25519JwsSigner"):
+        GcpKmsEd25519JwsSigner(kid="kid-1", key_version_name="projects/x/locations/y/keyRings/z/cryptoKeys/a/cryptoKeyVersions/1")
+
+    with pytest.raises(RuntimeError, match="google-cloud-secret-manager is required for GcpSecretManagerKeyProvider"):
+        GcpSecretManagerKeyProvider(secret_name="rare-keyring", project_id="rare-project").load_or_create()
+
+
+def test_gcp_secret_manager_key_provider_resolves_full_name_env_and_blank_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with pytest.raises(ValueError, match="secret_name is required"):
+        GcpSecretManagerKeyProvider(secret_name="   ")
+
+    full_name_client = FakeSecretManagerClient()
+    full_name_provider = GcpSecretManagerKeyProvider(
+        secret_name="projects/full-project/secrets/rare-keyring",
+        client=full_name_client,
+    )
+    full_name_provider.load_or_create()
+    assert "projects/full-project/secrets/rare-keyring" in full_name_client.secrets
+
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "env-project")
+    env_client = FakeSecretManagerClient()
+    env_provider = GcpSecretManagerKeyProvider(secret_name="rare-keyring-env", client=env_client)
+    env_provider.load_or_create()
+    assert "projects/env-project/secrets/rare-keyring-env" in env_client.secrets
+
+
+def test_file_key_provider_ignores_chmod_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = tmp_path / "rare-keyring.json"
+    provider = FileKeyProvider(path=path)
+
+    def raise_os_error(self, mode: int) -> None:
+        raise OSError("chmod blocked")
+
+    monkeypatch.setattr(Path, "chmod", raise_os_error)
+    keyring = provider.load_or_create()
+
+    assert keyring.active_identity_kid
+    assert path.exists()
+
+
+def test_ephemeral_key_provider_reports_ready() -> None:
+    provider = EphemeralKeyProvider()
+    assert provider.load_or_create().active_identity_kid
+    assert provider.readiness() == {"status": "ok", "backend": "ephemeral"}
+
+
+def test_httpx_context_manager_branches_for_sendgrid_and_github(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeContextHttpClient(FakeHttpClient):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> bool:
+            return False
+
+    context_client = FakeContextHttpClient()
+    monkeypatch.setattr("rare_api.integrations.httpx.Client", lambda timeout=10.0: context_client)
+
+    sendgrid_provider = SendGridEmailProvider(api_key="sg-key", from_email="noreply@example.com")
+    queued = sendgrid_provider.send_upgrade_link(
+        recipient_hint="owner@example.com",
+        upgrade_request_id="upg-ctx",
+        verify_url="https://example.com/upgrade",
+        expires_at=123,
+    )
+    assert queued["provider"] == "sendgrid"
+
+    github_adapter = GitHubOAuthAdapter(
+        client_id="gh-client",
+        client_secret="gh-secret",
+        redirect_uri="https://api.example.com/v1/upgrades/l2/social/callback?provider=github",
+    )
+    snapshot = github_adapter.exchange_code(code="oauth-code", state="state-123")
+    assert snapshot["provider_user_id"] == "123"
+
+
+def test_kms_integrations_support_success_paths_with_fake_google_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    signing_private_key_b64, signing_public_key_b64 = generate_ed25519_keypair()
+    signing_private_key = load_private_key(signing_private_key_b64)
+    public_key_pem = (
+        load_public_key(signing_public_key_b64)
+        .public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+        .decode("utf-8")
+    )
+
+    class FakeKmsClient:
+        def encrypt(self, request: dict):
+            return type("Resp", (), {"ciphertext": bytes(request["plaintext"])[::-1]})()
+
+        def decrypt(self, request: dict):
+            return type("Resp", (), {"plaintext": bytes(request["ciphertext"])[::-1]})()
+
+        def asymmetric_sign(self, request: dict):
+            return type("Resp", (), {"signature": signing_private_key.sign(bytes(request["data"]))})()
+
+        def get_public_key(self, request: dict):
+            return type("Resp", (), {"pem": public_key_pem})()
+
+    fake_kms_client = FakeKmsClient()
+    fake_kms_module = type(
+        "FakeKmsModule",
+        (),
+        {"KeyManagementServiceClient": staticmethod(lambda: fake_kms_client)},
+    )()
+    fake_cloud_module = type("FakeCloudModule", (), {"kms": fake_kms_module})()
+    original_import = builtins.__import__
+
+    def fake_import(name: str, globals=None, locals=None, fromlist=(), level: int = 0):
+        if name == "google.cloud":
+            return fake_cloud_module
+        return original_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    cipher = GcpKmsHostedKeyCipher(key_name="projects/p/locations/l/keyRings/r/cryptoKeys/k")
+    encrypted = cipher.encrypt_text("rare-secret")
+    assert cipher.decrypt_text(encrypted) == "rare-secret"
+    assert cipher.readiness() == {
+        "status": "ok",
+        "backend": "gcp_kms",
+        "key_name": "projects/p/locations/l/keyRings/r/cryptoKeys/k",
+    }
+
+    signer = GcpKmsEd25519JwsSigner(
+        kid="kms-kid",
+        key_version_name="projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1",
+    )
+    signature = signer.sign_bytes(b"header.payload")
+    signer.public_key().verify(signature, b"header.payload")
+    assert public_key_to_b64(signer.public_key()) == signing_public_key_b64
+    assert signer.readiness() == {
+        "status": "ok",
+        "backend": "gcp_kms",
+        "kid": "kms-kid",
+        "key_version_name": "projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1",
+    }
+
+
+def test_resolve_public_dns_txt_handles_success_empty_and_import_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeTxtAnswer:
+        def __init__(self, strings=None, rendered: str | None = None) -> None:
+            self.strings = strings
+            self._rendered = rendered
+
+        def __str__(self) -> str:
+            return self._rendered or ""
+
+    class FakeResolverModule:
+        @staticmethod
+        def resolve(name: str, record_type: str):
+            assert record_type == "TXT"
+            if name == "missing.example.com":
+                raise type("NXDOMAIN", (Exception,), {})()
+            return [
+                FakeTxtAnswer(strings=[b"rare=", b"ok"]),
+                FakeTxtAnswer(strings=None, rendered='"fallback-value"'),
+            ]
+
+    fake_dns_module = type("FakeDnsModule", (), {"resolver": FakeResolverModule})()
+    original_import = builtins.__import__
+
+    def fake_import(name: str, globals=None, locals=None, fromlist=(), level: int = 0):
+        if name in {"dns", "dns.resolver"}:
+            return fake_dns_module
+        return original_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    assert resolve_public_dns_txt("rare.example.com") == ["rare=ok", "fallback-value"]
+    assert resolve_public_dns_txt("missing.example.com") == []
+
+    def failing_import(name: str, globals=None, locals=None, fromlist=(), level: int = 0):
+        if name == "dns.resolver":
+            raise ImportError("blocked for test")
+        if name == "dns":
+            raise ImportError("blocked for test")
+        return original_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", failing_import)
+    with pytest.raises(RuntimeError, match="dnspython is required"):
+        resolve_public_dns_txt("rare.example.com")
 
 
 def test_sign_delegation_endpoint_rejects_invalid_session_key_and_accepts_valid_one(env: dict) -> None:
