@@ -69,7 +69,16 @@
 - PyPI 包：
   - `rare-agent-sdk`
 
-步骤同上，只是目标仓换成 `rare-agent-python`。
+当前已自动化：
+
+1. 私有主仓改版本号和代码
+2. 合并到 `Rare-Sors/Rare main`
+3. 等 `sync-public-oss` 成功
+4. 私有仓 `.github/workflows/release-public-agent-sdk.yml` 会检查 `Rare-ID/rare-agent-python` 当前版本
+5. 如果对应 `v<version>` release 不存在，会自动创建公共 release
+6. 公共仓 `publish.yml` 自动发布到 PyPI
+
+如果自动化失败，再回退到手动在 `Rare-ID/rare-agent-python` 创建 GitHub Release。
 
 ### 3. TypeScript platform kit
 
