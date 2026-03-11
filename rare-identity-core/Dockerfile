@@ -13,7 +13,6 @@ RUN apt-get update \
 
 COPY rare-identity-core/pyproject.toml /app/pyproject.toml
 COPY rare-identity-core/README.md /app/README.md
-COPY rare-identity-core/libs /app/libs
 COPY rare-identity-core/services /app/services
 
 RUN python -m pip install --upgrade pip setuptools wheel \
