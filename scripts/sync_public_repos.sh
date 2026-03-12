@@ -64,6 +64,17 @@ copy_file() {
   cp "$ROOT_DIR/$src_rel" "$repo_dir/$dest_rel"
 }
 
+copy_common_public_files() {
+  local repo_dir="$1"
+  local template_root="$2"
+
+  copy_file "$repo_dir" "LICENSE" "LICENSE"
+  copy_file "$repo_dir" "$template_root/CONTRIBUTING.md" "CONTRIBUTING.md"
+  copy_file "$repo_dir" "$template_root/SECURITY.md" "SECURITY.md"
+  copy_file "$repo_dir" "$template_root/CODE_OF_CONDUCT.md" "CODE_OF_CONDUCT.md"
+  copy_file "$repo_dir" "$template_root/SUPPORT.md" "SUPPORT.md"
+}
+
 copy_dir() {
   local repo_dir="$1"
   local src_rel="$2"
@@ -98,7 +109,10 @@ sync_protocol_repo() {
 
   remove_junk "$repo_dir"
   copy_file "$repo_dir" "public-oss/rare-protocol-py/README.md" "README.md"
+  copy_file "$repo_dir" "public-oss/rare-protocol-py/STATUS.md" "STATUS.md"
+  copy_file "$repo_dir" "public-oss/rare-protocol-py/COMPATIBILITY.md" "COMPATIBILITY.md"
   copy_dir "$repo_dir" "public-oss/rare-protocol-py/.github" ".github"
+  copy_common_public_files "$repo_dir" "public-oss/rare-protocol-py"
 
   copy_dir "$repo_dir" "rare-identity-protocol-python/src/rare_identity_protocol" "src/rare_identity_protocol"
   copy_dir "$repo_dir" "rare-identity-verifier-python/src/rare_identity_verifier" "src/rare_identity_verifier"
@@ -123,14 +137,33 @@ sync_protocol_repo() {
   commit_and_push "$repo_dir" "rare-protocol-py"
 }
 
+sync_overview_repo() {
+  local repo_dir
+  repo_dir="$(clone_repo "Rare")"
+
+  remove_junk "$repo_dir"
+  copy_file "$repo_dir" "public-oss/Rare/README.md" "README.md"
+  remove_target "$repo_dir" ".github"
+  remove_target "$repo_dir" "CONTRIBUTING.md"
+  remove_target "$repo_dir" "SECURITY.md"
+  remove_target "$repo_dir" "CODE_OF_CONDUCT.md"
+  remove_target "$repo_dir" "SUPPORT.md"
+  remove_target "$repo_dir" "LICENSE"
+
+  commit_and_push "$repo_dir" "Rare"
+}
+
 sync_agent_repo() {
   local repo_dir
   repo_dir="$(clone_repo "rare-agent-python")"
 
   remove_junk "$repo_dir"
+  copy_file "$repo_dir" "public-oss/rare-agent-python/README.md" "README.md"
+  copy_file "$repo_dir" "public-oss/rare-agent-python/STATUS.md" "STATUS.md"
+  copy_file "$repo_dir" "public-oss/rare-agent-python/HOSTED_VS_SELF_HOSTED.md" "HOSTED_VS_SELF_HOSTED.md"
   copy_dir "$repo_dir" "public-oss/rare-agent-python/.github" ".github"
+  copy_common_public_files "$repo_dir" "public-oss/rare-agent-python"
 
-  copy_file "$repo_dir" "rare-agent-sdk-python/README.md" "README.md"
   copy_file "$repo_dir" "rare-agent-sdk-python/pyproject.toml" "pyproject.toml"
   copy_file "$repo_dir" "rare-agent-sdk-python/requirements.lock" "requirements.lock"
   copy_file "$repo_dir" "rare-agent-sdk-python/requirements-test.lock" "requirements-test.lock"
@@ -145,9 +178,12 @@ sync_platform_repo() {
   repo_dir="$(clone_repo "rare-platform-ts")"
 
   remove_junk "$repo_dir"
+  copy_file "$repo_dir" "public-oss/rare-platform-ts/README.md" "README.md"
+  copy_file "$repo_dir" "public-oss/rare-platform-ts/STATUS.md" "STATUS.md"
+  copy_file "$repo_dir" "public-oss/rare-platform-ts/TRUST_MODEL.md" "TRUST_MODEL.md"
   copy_dir "$repo_dir" "public-oss/rare-platform-ts/.github" ".github"
+  copy_common_public_files "$repo_dir" "public-oss/rare-platform-ts"
 
-  copy_file "$repo_dir" "rare-platform-kit-ts/README.md" "README.md"
   copy_file "$repo_dir" "rare-platform-kit-ts/QUICKSTART.md" "QUICKSTART.md"
   copy_file "$repo_dir" "rare-platform-kit-ts/FULL_MODE_GUIDE.md" "FULL_MODE_GUIDE.md"
   copy_file "$repo_dir" "rare-platform-kit-ts/EVENTS_GUIDE.md" "EVENTS_GUIDE.md"
@@ -165,6 +201,7 @@ sync_platform_repo() {
   commit_and_push "$repo_dir" "rare-platform-ts"
 }
 
+sync_overview_repo
 sync_protocol_repo
 sync_agent_repo
 sync_platform_repo

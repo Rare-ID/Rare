@@ -18,8 +18,8 @@ Platforms adopting Rare need more than an HTTP client. They need challenge stora
 
 ## How It Fits Into Rare
 
-- `rare-protocol-py` defines the public protocol and reference verification rules
-- `rare-agent-sdk` produces the login and attestation materials
+- `Rare-ID/rare-protocol-py` defines the public protocol and reference verification rules
+- `Rare-ID/rare-agent-python` produces the login and attestation materials
 - `Rare Platform Kit` is the platform-side integration and local verification layer
 
 ## Quick Start
@@ -71,7 +71,12 @@ Read next:
 - Full identity mode requires `payload.aud == expected_aud`.
 - Public and full identity modes still require triad consistency:
   `auth_complete.agent_id == delegation.agent_id == attestation.sub`.
-- Governance should cap public identity mode to `L1` even if other data is present.
+- Governance should cap public identity mode to `L1`.
+
+Additional docs:
+
+- `STATUS.md`
+- `TRUST_MODEL.md`
 
 ## Development
 

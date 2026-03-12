@@ -5,6 +5,8 @@ on:
     branches:
       - main
     paths:
+      - "public-oss/**"
+      - "docs/open-source-overview.md"
       - "rare-identity-protocol-python/**"
       - "rare-identity-verifier-python/**"
       - "rare-agent-sdk-python/**"
