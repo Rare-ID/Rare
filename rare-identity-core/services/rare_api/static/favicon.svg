@@ -1,0 +1,9 @@
+<svg width="256" height="256" viewBox="9 9 218 218" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="RARE favicon">
+  <rect x="9" y="9" width="218" height="218" fill="#ffffff" />
+  <g fill="none" stroke="#111111" stroke-linecap="square" stroke-linejoin="miter">
+    <rect x="38" y="38" width="140" height="140" stroke-width="10" />
+    <rect x="58" y="58" width="140" height="140" stroke-width="10" opacity="0.28" />
+    <path d="M108 84 V148" stroke-width="10" />
+    <path d="M78 108 H138" stroke-width="10" opacity="0.88" />
+  </g>
+</svg>

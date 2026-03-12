@@ -3,11 +3,14 @@ from __future__ import annotations
 import json
 import logging
 import os
+from datetime import UTC, datetime
+from html import escape
 from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -394,22 +397,118 @@ def _resolve_management_token_or_require_proof(
 
 
 def _raise_http(exc: Exception) -> None:
+    status_code, detail = _http_error_status_and_detail(exc)
+    raise HTTPException(status_code=status_code, detail=detail) from exc
+
+
+def _http_error_status_and_detail(exc: Exception) -> tuple[int, str]:
     if isinstance(exc, HTTPException):
-        raise exc
+        return exc.status_code, str(exc.detail)
     if isinstance(exc, KeyError):
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return 404, str(exc)
     if isinstance(exc, PermissionError):
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
+        return 403, str(exc)
     if isinstance(exc, ResourceLimitError):
-        raise HTTPException(status_code=429, detail=str(exc)) from exc
+        return 429, str(exc)
     if isinstance(exc, SignatureError):
-        raise HTTPException(status_code=401, detail=str(exc)) from exc
+        return 401, str(exc)
     if isinstance(exc, ProtocolError):
         lower_detail = str(exc).lower()
         status = 409 if ("nonce" in lower_detail or "replay" in lower_detail) else 400
-        raise HTTPException(status_code=status, detail=str(exc)) from exc
+        return status, str(exc)
     logger.exception("Unhandled API exception")
-    raise HTTPException(status_code=500, detail="internal server error") from exc
+    return 500, "internal server error"
+
+
+def _human_time(timestamp: int | None) -> str:
+    if timestamp is None:
+        return "-"
+    dt = datetime.fromtimestamp(timestamp, UTC)
+    return dt.strftime("%b %d, %Y, %I:%M %p UTC").replace(" 0", " ")
+
+
+def _status_page_html(
+    *,
+    eyebrow: str,
+    title: str,
+    message: str,
+    accent: str,
+    detail_rows: list[tuple[str, str]] | None = None,
+) -> str:
+    rows = ""
+    if detail_rows:
+        rendered = []
+        for label, value in detail_rows:
+            rendered.append(
+                "<div style=\"display:flex;justify-content:space-between;gap:16px;padding:12px 0;border-top:1px solid rgba(31,26,23,0.09);\">"
+                f"<span style=\"color:#6f675b;\">{escape(label)}</span>"
+                f"<strong style=\"text-align:right;\">{escape(value)}</strong>"
+                "</div>"
+            )
+        rows = "".join(rendered)
+    return f"""<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{escape(title)} | Rare</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+  </head>
+  <body style="margin:0;background:#f2f2f2;color:#111111;font-family:Georgia,'Times New Roman',serif;">
+    <main style="max-width:720px;margin:0 auto;padding:28px 16px 56px;">
+      <section style="background:#ffffff;border:1px solid #d8d8d8;border-radius:26px;overflow:hidden;box-shadow:0 18px 40px rgba(17,17,17,0.08);">
+        <div style="padding:28px 32px 18px;background:{accent};">
+          <div style="font-family:'Courier New',monospace;font-size:12px;letter-spacing:0.18em;text-transform:uppercase;color:#5a5a5a;margin-bottom:14px;">{escape(eyebrow)}</div>
+          <h1 style="margin:0;font-size:42px;line-height:0.95;">{escape(title)}</h1>
+        </div>
+        <div style="padding:28px 32px 32px;font-size:17px;line-height:1.65;">
+          <p style="margin:0 0 18px;">{escape(message)}</p>
+          {rows}
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
+"""
+
+
+def _upgrade_verify_success_html(result: dict[str, Any]) -> str:
+    return _status_page_html(
+        eyebrow="Rare Identity",
+        title="Email verified",
+        message="Your Rare email verification is complete and the agent has been upgraded.",
+        accent="linear-gradient(135deg,#fafafa 0%,#ebebeb 100%)",
+        detail_rows=[
+            ("Level", str(result.get("level", "-"))),
+            ("Status", str(result.get("status", "-"))),
+            ("Processed", _human_time(int(datetime.now(UTC).timestamp()))),
+        ],
+    )
+
+
+def _recovery_verify_success_html(result: dict[str, Any]) -> str:
+    token = str(result.get("hosted_management_token") or "")
+    token_display = token if token else "Issued successfully"
+    return _status_page_html(
+        eyebrow="Rare Recovery",
+        title="Hosted access recovered",
+        message="Your hosted management token has been recovered. Store it now before closing this page.",
+        accent="linear-gradient(135deg,#fafafa 0%,#ebebeb 100%)",
+        detail_rows=[
+            ("Agent", str(result.get("agent_id", "-"))),
+            ("Expires", _human_time(result.get("hosted_management_token_expires_at"))),
+            ("Token", token_display),
+        ],
+    )
+
+
+def _error_status_page_html(*, eyebrow: str, title: str, message: str) -> str:
+    return _status_page_html(
+        eyebrow=eyebrow,
+        title=title,
+        message=message,
+        accent="linear-gradient(135deg,#f1f1f1 0%,#dfdfdf 100%)",
+    )
 
 
 def create_app(service: RareService | None = None, *, admin_token: str | None = None) -> FastAPI:
@@ -584,6 +683,9 @@ def create_app(service: RareService | None = None, *, admin_token: str | None = 
         openapi_url="/openapi.json" if enable_docs else None,
     )
     app.add_middleware(MaxBodySizeMiddleware, max_body_bytes=max_body_bytes)
+    static_dir = Path(__file__).with_name("static")
+    if static_dir.is_dir():
+        app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
     @app.get("/healthz")
     def healthz() -> dict[str, Any]:
@@ -834,11 +936,19 @@ def create_app(service: RareService | None = None, *, admin_token: str | None = 
             _raise_http(exc)
 
     @app.get("/v1/signer/recovery/email/verify")
-    def verify_management_recovery_email_legacy(token: str = Query(...)) -> dict:
+    def verify_management_recovery_email_legacy(token: str = Query(...)) -> HTMLResponse:
         try:
-            return rare_service.verify_hosted_management_recovery_email(token=token)
+            return HTMLResponse(content=_recovery_verify_success_html(rare_service.verify_hosted_management_recovery_email(token=token)))
         except Exception as exc:  # noqa: BLE001
-            _raise_http(exc)
+            status_code, detail = _http_error_status_and_detail(exc)
+            return HTMLResponse(
+                status_code=status_code,
+                content=_error_status_page_html(
+                    eyebrow="Rare Recovery",
+                    title="Recovery link failed",
+                    message=detail,
+                ),
+            )
 
     @app.post("/v1/signer/recovery/social/start")
     def start_management_recovery_social(
@@ -1089,11 +1199,19 @@ def create_app(service: RareService | None = None, *, admin_token: str | None = 
     if enable_legacy_magic_link_query:
 
         @app.get("/v1/upgrades/l1/email/verify")
-        def verify_upgrade_l1_email_legacy(token: str = Query(...)) -> dict:
+        def verify_upgrade_l1_email_legacy(token: str = Query(...)) -> HTMLResponse:
             try:
-                return rare_service.verify_upgrade_l1_email(token=token)
+                return HTMLResponse(content=_upgrade_verify_success_html(rare_service.verify_upgrade_l1_email(token=token)))
             except Exception as exc:  # noqa: BLE001
-                _raise_http(exc)
+                status_code, detail = _http_error_status_and_detail(exc)
+                return HTMLResponse(
+                    status_code=status_code,
+                    content=_error_status_page_html(
+                        eyebrow="Rare Identity",
+                        title="Verification link failed",
+                        message=detail,
+                    ),
+                )
 
     @app.post("/v1/upgrades/l2/social/start")
     def start_upgrade_l2_social(
