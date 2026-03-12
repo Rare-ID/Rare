@@ -1021,6 +1021,16 @@ def test_upgrade_l2_requires_l1_and_supports_x_or_github(env: dict) -> None:
         headers=hosted_headers(agent),
     )
     assert bad_complete.status_code == 400
+
+    status_after_bad_complete = client.get(
+        f"/v1/upgrades/requests/{github_request_id}",
+        headers=hosted_headers(agent),
+    )
+    assert status_after_bad_complete.status_code == 200
+    assert status_after_bad_complete.json()["status"] == "human_pending"
+    assert status_after_bad_complete.json()["next_step"] == "connect_social"
+    assert status_after_bad_complete.json()["social_provider"] is None
+
     good_complete = client.post(
         "/v1/upgrades/l2/social/complete",
         json={
