@@ -10,6 +10,10 @@ locals {
   sendgrid_key_secret_id  = "${local.prefix}-sendgrid-api-key"
   github_id_secret_id     = "${local.prefix}-github-client-id"
   github_secret_secret_id = "${local.prefix}-github-client-secret"
+  linkedin_id_secret_id   = "${local.prefix}-linkedin-client-id"
+  linkedin_secret_id      = "${local.prefix}-linkedin-client-secret"
+  x_id_secret_id          = "${local.prefix}-x-client-id"
+  x_secret_id             = "${local.prefix}-x-client-secret"
 }
 
 data "google_compute_network" "main" {
@@ -80,8 +84,8 @@ resource "google_sql_database_instance" "postgres" {
   settings {
     tier              = var.db_tier
     availability_type = var.db_availability_type
-    disk_size          = var.db_disk_size_gb
-    disk_type          = "PD_SSD"
+    disk_size         = var.db_disk_size_gb
+    disk_type         = "PD_SSD"
 
     backup_configuration {
       enabled                        = true
@@ -199,6 +203,54 @@ resource "google_secret_manager_secret" "github_client_secret" {
 resource "google_secret_manager_secret_version" "github_client_secret" {
   secret      = google_secret_manager_secret.github_client_secret.id
   secret_data = var.github_client_secret
+}
+
+resource "google_secret_manager_secret" "linkedin_client_id" {
+  secret_id = local.linkedin_id_secret_id
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "linkedin_client_id" {
+  secret      = google_secret_manager_secret.linkedin_client_id.id
+  secret_data = var.linkedin_client_id
+}
+
+resource "google_secret_manager_secret" "linkedin_client_secret" {
+  secret_id = local.linkedin_secret_id
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "linkedin_client_secret" {
+  secret      = google_secret_manager_secret.linkedin_client_secret.id
+  secret_data = var.linkedin_client_secret
+}
+
+resource "google_secret_manager_secret" "x_client_id" {
+  secret_id = local.x_id_secret_id
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "x_client_id" {
+  secret      = google_secret_manager_secret.x_client_id.id
+  secret_data = var.x_client_id
+}
+
+resource "google_secret_manager_secret" "x_client_secret" {
+  secret_id = local.x_secret_id
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "x_client_secret" {
+  secret      = google_secret_manager_secret.x_client_secret.id
+  secret_data = var.x_client_secret
 }
 
 resource "google_kms_key_ring" "main" {
@@ -406,7 +458,7 @@ resource "google_cloud_run_v2_service" "api" {
 
       env {
         name  = "RARE_SOCIAL_PROVIDER_ALLOWLIST"
-        value = "github"
+        value = "github,x,linkedin"
       }
 
       env {
@@ -477,6 +529,46 @@ resource "google_cloud_run_v2_service" "api" {
         value_source {
           secret_key_ref {
             secret  = google_secret_manager_secret.github_client_secret.secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      env {
+        name = "RARE_LINKEDIN_CLIENT_ID"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.linkedin_client_id.secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      env {
+        name = "RARE_LINKEDIN_CLIENT_SECRET"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.linkedin_client_secret.secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      env {
+        name = "RARE_X_CLIENT_ID"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.x_client_id.secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      env {
+        name = "RARE_X_CLIENT_SECRET"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.x_client_secret.secret_id
             version = "latest"
           }
         }

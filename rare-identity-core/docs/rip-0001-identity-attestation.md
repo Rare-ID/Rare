@@ -42,6 +42,11 @@ When available, payload MAY include:
 - `claims.owner_id`
 - `claims.twitter`
 - `claims.github`
+- `claims.linkedin`
+
+Provider mapping notes:
+- `claims.twitter` remains the compatibility slot for X-linked L2 identities.
+- `claims.linkedin` is optional and MAY omit `vanity_name` when only a stable LinkedIn subject/id is available.
 
 ### Public attestation
 - Header: `typ=rare.identity.public+jws`

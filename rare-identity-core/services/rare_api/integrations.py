@@ -440,10 +440,16 @@ def _build_recovery_email_html(*, agent_id: str, verify_url: str, expires_at: in
 class SocialProviderAdapter(Protocol):
     provider: str
 
-    def build_authorize_url(self, *, state: str) -> str:
-        """Return the provider authorize URL."""
+    def start_authorization(self, *, state: str) -> dict[str, Any]:
+        """Return authorize_url and optional provider context."""
 
-    def exchange_code(self, *, code: str, state: str) -> dict[str, Any]:
+    def exchange_code(
+        self,
+        *,
+        code: str,
+        state: str,
+        provider_context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Return a normalized provider snapshot."""
 
     def readiness(self) -> dict[str, Any]:
@@ -516,10 +522,19 @@ class GcpKmsEd25519JwsSigner:
 class StubSocialProviderAdapter:
     provider: str
 
-    def build_authorize_url(self, *, state: str) -> str:
-        return f"https://oauth.{self.provider}.local/authorize?state={state}&client_id=rare-dev"
+    def start_authorization(self, *, state: str) -> dict[str, Any]:
+        return {
+            "authorize_url": f"https://oauth.{self.provider}.local/authorize?state={state}&client_id=rare-dev",
+            "provider_context": {},
+        }
 
-    def exchange_code(self, *, code: str, state: str) -> dict[str, Any]:
+    def exchange_code(
+        self,
+        *,
+        code: str,
+        state: str,
+        provider_context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         digest = hashlib.sha256(f"{self.provider}:{state}:{code}".encode("utf-8")).hexdigest()
         suffix = digest[:10]
         if self.provider == "github":
@@ -563,7 +578,7 @@ class GitHubOAuthAdapter:
     provider: str = "github"
     http_client: httpx.Client | None = None
 
-    def build_authorize_url(self, *, state: str) -> str:
+    def start_authorization(self, *, state: str) -> dict[str, Any]:
         query = urlencode(
             {
                 "client_id": self.client_id,
@@ -572,9 +587,18 @@ class GitHubOAuthAdapter:
                 "state": state,
             }
         )
-        return f"https://github.com/login/oauth/authorize?{query}"
+        return {
+            "authorize_url": f"https://github.com/login/oauth/authorize?{query}",
+            "provider_context": {},
+        }
 
-    def exchange_code(self, *, code: str, state: str) -> dict[str, Any]:
+    def exchange_code(
+        self,
+        *,
+        code: str,
+        state: str,
+        provider_context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         if self.http_client is not None:
             user_payload = self._exchange_with_client(client=self.http_client, code=code, state=state)
         else:
@@ -627,6 +651,206 @@ class GitHubOAuthAdapter:
         return user_response.json()
 
 
+@dataclass(frozen=True)
+class LinkedInOAuthAdapter:
+    client_id: str
+    client_secret: str
+    redirect_uri: str
+    api_version: str | None = None
+    provider: str = "linkedin"
+    http_client: httpx.Client | None = None
+
+    def start_authorization(self, *, state: str) -> dict[str, Any]:
+        query = urlencode(
+            {
+                "response_type": "code",
+                "client_id": self.client_id,
+                "redirect_uri": self.redirect_uri,
+                "scope": "openid profile email",
+                "state": state,
+            }
+        )
+        return {
+            "authorize_url": f"https://www.linkedin.com/oauth/v2/authorization?{query}",
+            "provider_context": {},
+        }
+
+    def exchange_code(
+        self,
+        *,
+        code: str,
+        state: str,
+        provider_context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        if self.http_client is not None:
+            user_payload = self._exchange_with_client(client=self.http_client, code=code)
+        else:
+            with httpx.Client(timeout=10.0) as client:
+                user_payload = self._exchange_with_client(client=client, code=code)
+        provider_user_id = str(user_payload.get("sub") or user_payload.get("id") or "").strip()
+        if not provider_user_id:
+            raise TokenValidationError("linkedin user profile missing sub")
+
+        username_or_handle = str(
+            user_payload.get("vanity_name")
+            or user_payload.get("preferred_username")
+            or user_payload.get("publicIdentifier")
+            or ""
+        ).strip()
+        display_name = str(
+            user_payload.get("name")
+            or " ".join(
+                part
+                for part in (
+                    str(user_payload.get("given_name") or "").strip(),
+                    str(user_payload.get("family_name") or "").strip(),
+                )
+                if part
+            )
+            or username_or_handle
+            or provider_user_id
+        )
+        picture = user_payload.get("picture")
+        profile_url = ""
+        if username_or_handle:
+            profile_url = f"https://www.linkedin.com/in/{username_or_handle}"
+        elif isinstance(picture, str):
+            profile_url = picture
+
+        snapshot = {
+            "provider": self.provider,
+            "provider_user_id": provider_user_id,
+            "display_name": display_name,
+            "profile_url": profile_url,
+            "raw_snapshot": user_payload,
+        }
+        if username_or_handle:
+            snapshot["username_or_handle"] = username_or_handle
+        return snapshot
+
+    def readiness(self) -> dict[str, Any]:
+        payload = {"status": "ok", "backend": "oauth", "provider": self.provider, "redirect_uri": self.redirect_uri}
+        if self.api_version:
+            payload["api_version"] = self.api_version
+        return payload
+
+    def _exchange_with_client(self, *, client: Any, code: str) -> dict[str, Any]:
+        token_response = client.post(
+            "https://www.linkedin.com/oauth/v2/accessToken",
+            headers={"Accept": "application/json"},
+            data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": self.redirect_uri,
+                "client_id": self.client_id,
+                "client_secret": self.client_secret,
+            },
+        )
+        token_response.raise_for_status()
+        token_payload = token_response.json()
+        access_token = str(token_payload.get("access_token") or "").strip()
+        if not access_token:
+            raise TokenValidationError("linkedin access token missing")
+
+        headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
+        if self.api_version:
+            headers["LinkedIn-Version"] = self.api_version
+        user_response = client.get("https://api.linkedin.com/v2/userinfo", headers=headers)
+        user_response.raise_for_status()
+        payload = user_response.json()
+        if not isinstance(payload, dict):
+            raise TokenValidationError("linkedin user profile missing payload")
+        return payload
+
+
+@dataclass(frozen=True)
+class XOAuthAdapter:
+    client_id: str
+    client_secret: str
+    redirect_uri: str
+    provider: str = "x"
+    http_client: httpx.Client | None = None
+
+    def start_authorization(self, *, state: str) -> dict[str, Any]:
+        code_verifier = _b64url_encode(secrets.token_bytes(32))
+        query = urlencode(
+            {
+                "response_type": "code",
+                "client_id": self.client_id,
+                "redirect_uri": self.redirect_uri,
+                "scope": "users.read",
+                "state": state,
+                "code_challenge": _pkce_code_challenge(code_verifier),
+                "code_challenge_method": "S256",
+            }
+        )
+        return {
+            "authorize_url": f"https://twitter.com/i/oauth2/authorize?{query}",
+            "provider_context": {"code_verifier": code_verifier},
+        }
+
+    def exchange_code(
+        self,
+        *,
+        code: str,
+        state: str,
+        provider_context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        code_verifier = str((provider_context or {}).get("code_verifier") or "").strip()
+        if not code_verifier:
+            raise TokenValidationError("x oauth state missing code_verifier")
+        if self.http_client is not None:
+            user_payload = self._exchange_with_client(client=self.http_client, code=code, code_verifier=code_verifier)
+        else:
+            with httpx.Client(timeout=10.0) as client:
+                user_payload = self._exchange_with_client(client=client, code=code, code_verifier=code_verifier)
+        data = user_payload.get("data") if isinstance(user_payload.get("data"), dict) else user_payload
+        provider_user_id = str(data.get("id") or "").strip()
+        username = str(data.get("username") or "").strip()
+        if not provider_user_id or not username:
+            raise TokenValidationError("x user profile missing id/username")
+        return {
+            "provider": self.provider,
+            "provider_user_id": provider_user_id,
+            "username_or_handle": username,
+            "display_name": str(data.get("name") or username),
+            "profile_url": f"https://x.com/{username}",
+            "raw_snapshot": user_payload,
+        }
+
+    def readiness(self) -> dict[str, Any]:
+        return {"status": "ok", "backend": "oauth", "provider": self.provider, "redirect_uri": self.redirect_uri}
+
+    def _exchange_with_client(self, *, client: Any, code: str, code_verifier: str) -> dict[str, Any]:
+        token_response = client.post(
+            "https://api.x.com/2/oauth2/token",
+            headers={"Accept": "application/json"},
+            data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": self.redirect_uri,
+                "code_verifier": code_verifier,
+            },
+            auth=(self.client_id, self.client_secret),
+        )
+        token_response.raise_for_status()
+        token_payload = token_response.json()
+        access_token = str(token_payload.get("access_token") or "").strip()
+        if not access_token:
+            raise TokenValidationError("x access token missing")
+
+        user_response = client.get(
+            "https://api.x.com/2/users/me",
+            params={"user.fields": "id,name,username"},
+            headers={"Authorization": f"Bearer {access_token}", "Accept": "application/json"},
+        )
+        user_response.raise_for_status()
+        payload = user_response.json()
+        if not isinstance(payload, dict):
+            raise TokenValidationError("x user profile missing payload")
+        return payload
+
+
 def default_social_provider_adapters() -> dict[str, SocialProviderAdapter]:
     return {
         "github": StubSocialProviderAdapter(provider="github"),
@@ -665,3 +889,7 @@ def _b64url_encode(data: bytes) -> str:
 def _b64url_decode(data: str) -> bytes:
     padding = "=" * ((4 - len(data) % 4) % 4)
     return base64.urlsafe_b64decode((data + padding).encode("ascii"))
+
+
+def _pkce_code_challenge(code_verifier: str) -> str:
+    return _b64url_encode(hashlib.sha256(code_verifier.encode("ascii")).digest())

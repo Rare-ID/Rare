@@ -15,6 +15,7 @@ from rare_api.integrations import (
     GcpKmsEd25519JwsSigner,
     GcpKmsHostedKeyCipher,
     GitHubOAuthAdapter,
+    LinkedInOAuthAdapter,
     LocalAesGcmHostedKeyCipher,
     LocalEd25519JwsSigner,
     NoopEmailProvider,
@@ -22,6 +23,7 @@ from rare_api.integrations import (
     resolve_public_dns_txt,
     SendGridEmailProvider,
     StubSocialProviderAdapter,
+    XOAuthAdapter,
     default_social_provider_adapters,
 )
 from rare_api.key_provider import EphemeralKeyProvider, FileKeyProvider, GcpSecretManagerKeyProvider
@@ -275,21 +277,24 @@ def register_platform(client: TestClient, service: RareService, *, aud: str = "p
 
     service.dns_txt_resolver = lambda name: [challenge["txt_value"]] if name == challenge["txt_name"] else []
     platform_private, platform_public = generate_ed25519_keypair()
+    platform_suffix = aud.replace("_", "-").replace(":", "-")
+    platform_id = f"platform-{platform_suffix}"
+    key_id = f"{platform_id}-k1"
     register_response = client.post(
         "/v1/platforms/register/complete",
         json={
             "challenge_id": challenge["challenge_id"],
-            "platform_id": "platform-001",
+            "platform_id": platform_id,
             "platform_aud": aud,
             "domain": "platform.example.com",
-            "keys": [{"kid": "platform-k1", "public_key": platform_public}],
+            "keys": [{"kid": key_id, "public_key": platform_public}],
         },
     )
     assert register_response.status_code == 200
     return RegisteredPlatform(
         platform_aud=aud,
-        platform_id="platform-001",
-        key_id="platform-k1",
+        platform_id=platform_id,
+        key_id=key_id,
         private_key=platform_private,
     )
 
@@ -908,7 +913,66 @@ def test_hosted_management_token_social_recovery_requires_linked_account(env: di
     assert recovered.json()["recovery_factor"] == "social:github"
 
 
-def test_upgrade_l2_requires_l1_and_supports_x_or_github(env: dict) -> None:
+def test_hosted_management_token_social_recovery_supports_linkedin_without_handle(env: dict) -> None:
+    client = env["client"]
+    agent = register_agent(client, "recover-linkedin-agent")
+
+    l1_request_id = "recover-linkedin-l1"
+    signed_l1 = sign_hosted_upgrade_request(
+        client,
+        agent_id=agent.agent_id,
+        target_level="L1",
+        request_id=l1_request_id,
+        hosted_management_token=agent.hosted_management_token or "",
+    )
+    created_l1 = client.post(
+        "/v1/upgrades/requests",
+        json={**signed_l1, "contact_email": "recover-linkedin@example.com"},
+    )
+    assert created_l1.status_code == 200
+    verified_l1 = client.post("/v1/upgrades/l1/email/verify", json={"token": created_l1.json()["token"]})
+    assert verified_l1.status_code == 200
+
+    l2_request_id = "recover-linkedin-l2"
+    signed_l2 = sign_hosted_upgrade_request(
+        client,
+        agent_id=agent.agent_id,
+        target_level="L2",
+        request_id=l2_request_id,
+        hosted_management_token=agent.hosted_management_token or "",
+    )
+    created_l2 = client.post("/v1/upgrades/requests", json=signed_l2)
+    assert created_l2.status_code == 200
+    completed_l2 = client.post(
+        "/v1/upgrades/l2/social/complete",
+        json={
+            "upgrade_request_id": l2_request_id,
+            "provider": "linkedin",
+            "provider_user_snapshot": {"id": "linkedin-user-42", "display_name": "Rare LinkedIn"},
+        },
+        headers=hosted_headers(agent),
+    )
+    assert completed_l2.status_code == 200
+
+    factors = client.get(f"/v1/signer/recovery/factors/{agent.agent_id}")
+    assert factors.status_code == 200
+    assert ("social", "linkedin") in {
+        (item["type"], item.get("provider")) for item in factors.json()["available_factors"]
+    }
+
+    recovered = client.post(
+        "/v1/signer/recovery/social/complete",
+        json={
+            "agent_id": agent.agent_id,
+            "provider": "linkedin",
+            "provider_user_snapshot": {"id": "linkedin-user-42"},
+        },
+    )
+    assert recovered.status_code == 200
+    assert recovered.json()["recovery_factor"] == "social:linkedin"
+
+
+def test_upgrade_l2_requires_l1_and_supports_x_github_and_linkedin(env: dict) -> None:
     client = env["client"]
     service = env["service"]
     agent = register_agent(client, "upgrade-l2")
@@ -1000,6 +1064,7 @@ def test_upgrade_l2_requires_l1_and_supports_x_or_github(env: dict) -> None:
         expected_aud="platform",
     )
     assert full_verified.payload["lvl"] == "L2"
+    assert full_verified.payload["claims"]["twitter"]["handle"].startswith("x_")
 
     github_request_id = "upg-l2-github"
     signed_github = sign_hosted_upgrade_request(
@@ -1021,7 +1086,6 @@ def test_upgrade_l2_requires_l1_and_supports_x_or_github(env: dict) -> None:
         headers=hosted_headers(agent),
     )
     assert bad_complete.status_code == 400
-
     status_after_bad_complete = client.get(
         f"/v1/upgrades/requests/{github_request_id}",
         headers=hosted_headers(agent),
@@ -1030,7 +1094,6 @@ def test_upgrade_l2_requires_l1_and_supports_x_or_github(env: dict) -> None:
     assert status_after_bad_complete.json()["status"] == "human_pending"
     assert status_after_bad_complete.json()["next_step"] == "connect_social"
     assert status_after_bad_complete.json()["social_provider"] is None
-
     good_complete = client.post(
         "/v1/upgrades/l2/social/complete",
         json={
@@ -1043,6 +1106,44 @@ def test_upgrade_l2_requires_l1_and_supports_x_or_github(env: dict) -> None:
     assert good_complete.status_code == 200
     assert good_complete.json()["status"] == "upgraded"
     assert good_complete.json()["level"] == "L2"
+
+    linkedin_request_id = "upg-l2-linkedin-complete"
+    signed_linkedin = sign_hosted_upgrade_request(
+        client,
+        agent_id=agent.agent_id,
+        target_level="L2",
+        request_id=linkedin_request_id,
+        hosted_management_token=agent.hosted_management_token or "",
+    )
+    created_linkedin = client.post("/v1/upgrades/requests", json=signed_linkedin)
+    assert created_linkedin.status_code == 200
+    linkedin_complete = client.post(
+        "/v1/upgrades/l2/social/complete",
+        json={
+            "upgrade_request_id": linkedin_request_id,
+            "provider": "linkedin",
+            "provider_user_snapshot": {"id": "linkedin-200", "display_name": "Rare LinkedIn"},
+        },
+        headers=hosted_headers(agent),
+    )
+    assert linkedin_complete.status_code == 200
+    register_platform(client, service, aud="platform-linkedin-complete")
+    full_linkedin = client.post(
+        "/v1/attestations/full/issue",
+        json=sign_hosted_full_issue(
+            client,
+            agent_id=agent.agent_id,
+            platform_aud="platform-linkedin-complete",
+            hosted_management_token=agent.hosted_management_token or "",
+        ),
+    )
+    assert full_linkedin.status_code == 200
+    linkedin_verified = verify_identity_attestation(
+        full_linkedin.json()["full_identity_attestation"],
+        key_resolver=service.get_identity_public_key,
+        expected_aud="platform-linkedin-complete",
+    )
+    assert linkedin_verified.payload["claims"]["linkedin"]["id"] == "linkedin-200"
 
 
 def test_breaking_rejects_legacy_identity_typ(env: dict) -> None:
@@ -2166,6 +2267,7 @@ def test_create_app_allows_postgres_redis_backend(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setenv("RARE_STORAGE_BACKEND", "postgres_redis")
     monkeypatch.setenv("RARE_STATE_NAMESPACE", namespace)
     monkeypatch.setenv("RARE_KEY_PROVIDER", "ephemeral")
+    monkeypatch.setenv("RARE_SOCIAL_PROVIDER_ALLOWLIST", "github")
     monkeypatch.setenv("RARE_GITHUB_CLIENT_ID", "gh-client")
     monkeypatch.setenv("RARE_GITHUB_CLIENT_SECRET", "gh-secret")
     try:
@@ -2174,6 +2276,48 @@ def test_create_app_allows_postgres_redis_backend(monkeypatch: pytest.MonkeyPatc
         assert response.status_code == 200
     finally:
         PostgresRedisStateStore.clear_namespace(namespace)
+
+
+def test_create_app_supports_all_social_providers_in_prod(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("RARE_ENV", "prod")
+    monkeypatch.setenv("RARE_PUBLIC_BASE_URL", "https://api.example.com")
+    monkeypatch.setenv("RARE_STORAGE_BACKEND", "sqlite")
+    monkeypatch.setenv("RARE_SQLITE_STATE_FILE", str(tmp_path / "prod-state.sqlite3"))
+    monkeypatch.setenv("RARE_KEY_PROVIDER", "ephemeral")
+    monkeypatch.setenv("RARE_SOCIAL_PROVIDER_ALLOWLIST", "github,x,linkedin")
+    monkeypatch.setenv("RARE_GITHUB_CLIENT_ID", "gh-client")
+    monkeypatch.setenv("RARE_GITHUB_CLIENT_SECRET", "gh-secret")
+    monkeypatch.setenv("RARE_LINKEDIN_CLIENT_ID", "li-client")
+    monkeypatch.setenv("RARE_LINKEDIN_CLIENT_SECRET", "li-secret")
+    monkeypatch.setenv("RARE_X_CLIENT_ID", "x-client")
+    monkeypatch.setenv("RARE_X_CLIENT_SECRET", "x-secret")
+
+    client = TestClient(create_app())
+    health = client.get("/healthz")
+    assert health.status_code == 200
+    assert health.json()["enabled_social_providers"] == ["github", "linkedin", "x"]
+
+
+def test_create_app_rejects_missing_secret_for_enabled_social_provider(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("RARE_ENV", "prod")
+    monkeypatch.setenv("RARE_PUBLIC_BASE_URL", "https://api.example.com")
+    monkeypatch.setenv("RARE_STORAGE_BACKEND", "sqlite")
+    monkeypatch.setenv("RARE_SQLITE_STATE_FILE", str(tmp_path / "missing-secret.sqlite3"))
+    monkeypatch.setenv("RARE_KEY_PROVIDER", "ephemeral")
+    monkeypatch.setenv("RARE_SOCIAL_PROVIDER_ALLOWLIST", "github,linkedin")
+    monkeypatch.setenv("RARE_GITHUB_CLIENT_ID", "gh-client")
+    monkeypatch.setenv("RARE_GITHUB_CLIENT_SECRET", "gh-secret")
+    monkeypatch.delenv("RARE_LINKEDIN_CLIENT_ID", raising=False)
+    monkeypatch.delenv("RARE_LINKEDIN_CLIENT_SECRET", raising=False)
+
+    with pytest.raises(ValueError, match="LinkedIn OAuth requires"):
+        create_app()
 
 
 def test_healthz_and_readyz_report_runtime_status(env: dict) -> None:
@@ -2275,6 +2419,107 @@ def test_sqlite_state_store_syncs_between_instances(tmp_path: Path) -> None:
     refreshed = second_client.post("/v1/attestations/refresh", json={"agent_id": agent_id})
     assert refreshed.status_code == 200
     assert refreshed.json()["agent_id"] == agent_id
+
+
+def test_sqlite_state_store_persists_x_oauth_provider_context_across_restart(tmp_path: Path) -> None:
+    @dataclass
+    class PersistedXAdapter:
+        provider: str = "x"
+
+        def start_authorization(self, *, state: str) -> dict[str, object]:
+            return {
+                "authorize_url": f"https://x.example/authorize?state={state}",
+                "provider_context": {"code_verifier": "persisted-verifier"},
+            }
+
+        def exchange_code(
+            self,
+            *,
+            code: str,
+            state: str,
+            provider_context: dict[str, object] | None = None,
+        ) -> dict[str, object]:
+            assert code == "oauth-code"
+            assert state
+            assert provider_context == {"code_verifier": "persisted-verifier"}
+            return {
+                "provider": "x",
+                "provider_user_id": "x-user-1",
+                "username_or_handle": "rarex",
+                "display_name": "Rare X",
+                "profile_url": "https://x.com/rarex",
+                "raw_snapshot": {"id": "x-user-1", "username": "rarex"},
+            }
+
+        def readiness(self) -> dict[str, object]:
+            return {"status": "ok", "backend": "test", "provider": "x"}
+
+    sqlite_file = tmp_path / "oauth-state.sqlite3"
+    keyring_file = tmp_path / "oauth-keyring.json"
+    provider = FileKeyProvider(path=keyring_file)
+
+    first = RareService(
+        allow_local_upgrade_shortcuts=True,
+        key_provider=provider,
+        state_store=SqliteStateStore(path=sqlite_file),
+        social_provider_adapters={"x": PersistedXAdapter()},
+    )
+    first_client = TestClient(create_app(first))
+    agent = register_agent(first_client, "persisted-x-agent")
+
+    l1_request_id = "persisted-x-l1"
+    signed_l1 = sign_hosted_upgrade_request(
+        first_client,
+        agent_id=agent.agent_id,
+        target_level="L1",
+        request_id=l1_request_id,
+        hosted_management_token=agent.hosted_management_token or "",
+    )
+    created_l1 = first_client.post(
+        "/v1/upgrades/requests",
+        json={**signed_l1, "contact_email": "persisted-x@example.com"},
+    )
+    assert created_l1.status_code == 200
+    sent = first_client.post(
+        "/v1/upgrades/l1/email/send-link",
+        json={"upgrade_request_id": l1_request_id},
+        headers=hosted_headers(agent),
+    )
+    assert sent.status_code == 200
+    verified_l1 = first_client.post("/v1/upgrades/l1/email/verify", json={"token": sent.json()["token"]})
+    assert verified_l1.status_code == 200
+
+    l2_request_id = "persisted-x-l2"
+    signed_l2 = sign_hosted_upgrade_request(
+        first_client,
+        agent_id=agent.agent_id,
+        target_level="L2",
+        request_id=l2_request_id,
+        hosted_management_token=agent.hosted_management_token or "",
+    )
+    created_l2 = first_client.post("/v1/upgrades/requests", json=signed_l2)
+    assert created_l2.status_code == 200
+    started = first_client.post(
+        "/v1/upgrades/l2/social/start",
+        json={"upgrade_request_id": l2_request_id, "provider": "x"},
+        headers=hosted_headers(agent),
+    )
+    assert started.status_code == 200
+
+    second = RareService(
+        allow_local_upgrade_shortcuts=True,
+        key_provider=provider,
+        state_store=SqliteStateStore(path=sqlite_file),
+        social_provider_adapters={"x": PersistedXAdapter()},
+    )
+    second_client = TestClient(create_app(second))
+    callback = second_client.get(
+        "/v1/upgrades/l2/social/callback",
+        params={"provider": "x", "code": "oauth-code", "state": started.json()["state"]},
+    )
+    assert callback.status_code == 200
+    assert callback.json()["status"] == "upgraded"
+    assert callback.json()["level"] == "L2"
 
 
 def test_self_register_persists_snapshot_with_redis_backed_replay_handles(tmp_path: Path) -> None:
@@ -2848,10 +3093,12 @@ def test_github_oauth_adapter_builds_and_exchanges_with_real_endpoints() -> None
         http_client=fake_http,
     )
 
-    authorize_url = adapter.build_authorize_url(state="state-123")
+    auth_start = adapter.start_authorization(state="state-123")
+    authorize_url = auth_start["authorize_url"]
     parsed = urlparse(authorize_url)
     assert parsed.netloc == "github.com"
     assert parse_qs(parsed.query)["state"] == ["state-123"]
+    assert auth_start["provider_context"] == {}
 
     snapshot = adapter.exchange_code(code="oauth-code", state="state-123")
     assert snapshot["provider"] == "github"
@@ -2933,6 +3180,8 @@ def test_stub_social_provider_variants_and_registry() -> None:
     assert set(registry) == {"github", "linkedin", "x"}
     assert registry["github"].readiness()["backend"] == "stub"
 
+    stub_start = StubSocialProviderAdapter(provider="x").start_authorization(state="state")
+    assert stub_start["provider_context"] == {}
     github_snapshot = StubSocialProviderAdapter(provider="github").exchange_code(code="code", state="state")
     x_snapshot = StubSocialProviderAdapter(provider="x").exchange_code(code="code", state="state")
     linkedin_snapshot = StubSocialProviderAdapter(provider="linkedin").exchange_code(code="code", state="state")
@@ -2973,6 +3222,132 @@ def test_github_oauth_adapter_readiness_and_error_paths() -> None:
     )
     with pytest.raises(TokenValidationError, match="github user profile missing id/login"):
         bad_profile_adapter.exchange_code(code="oauth-code", state="state-123")
+
+
+def test_linkedin_oauth_adapter_builds_and_exchanges_with_real_endpoints() -> None:
+    class LinkedInHttpClient:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str, dict]] = []
+
+        def post(self, url: str, **kwargs: dict) -> FakeHttpResponse:
+            self.calls.append(("POST", url, kwargs))
+            return FakeHttpResponse(json_body={"access_token": "li-token"})
+
+        def get(self, url: str, **kwargs: dict) -> FakeHttpResponse:
+            self.calls.append(("GET", url, kwargs))
+            return FakeHttpResponse(
+                json_body={
+                    "sub": "linkedin-user-1",
+                    "name": "Rare LinkedIn",
+                    "email": "owner@example.com",
+                    "email_verified": True,
+                }
+            )
+
+    fake_http = LinkedInHttpClient()
+    adapter = LinkedInOAuthAdapter(
+        client_id="li-client",
+        client_secret="li-secret",
+        redirect_uri="https://api.example.com/v1/upgrades/l2/social/callback?provider=linkedin",
+        api_version="202501",
+        http_client=fake_http,
+    )
+
+    auth_start = adapter.start_authorization(state="state-456")
+    parsed = urlparse(auth_start["authorize_url"])
+    assert parsed.netloc == "www.linkedin.com"
+    assert parse_qs(parsed.query)["scope"] == ["openid profile email"]
+    assert auth_start["provider_context"] == {}
+
+    snapshot = adapter.exchange_code(code="linkedin-code", state="state-456")
+    assert snapshot["provider"] == "linkedin"
+    assert snapshot["provider_user_id"] == "linkedin-user-1"
+    assert "username_or_handle" not in snapshot
+    assert snapshot["display_name"] == "Rare LinkedIn"
+    assert snapshot["raw_snapshot"]["email_verified"] is True
+    _, _, userinfo_kwargs = fake_http.calls[1]
+    assert userinfo_kwargs["headers"]["LinkedIn-Version"] == "202501"
+
+
+def test_linkedin_oauth_adapter_rejects_missing_subject() -> None:
+    class MissingSubjectLinkedInHttpClient:
+        def post(self, url: str, **kwargs: dict) -> FakeHttpResponse:
+            return FakeHttpResponse(json_body={"access_token": "li-token"})
+
+        def get(self, url: str, **kwargs: dict) -> FakeHttpResponse:
+            return FakeHttpResponse(json_body={"name": "Rare LinkedIn"})
+
+    adapter = LinkedInOAuthAdapter(
+        client_id="li-client",
+        client_secret="li-secret",
+        redirect_uri="https://api.example.com/v1/upgrades/l2/social/callback?provider=linkedin",
+        http_client=MissingSubjectLinkedInHttpClient(),
+    )
+    with pytest.raises(TokenValidationError, match="linkedin user profile missing sub"):
+        adapter.exchange_code(code="linkedin-code", state="state-456")
+
+
+def test_x_oauth_adapter_uses_pkce_and_exchanges_profile() -> None:
+    class XHttpClient:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str, dict]] = []
+
+        def post(self, url: str, **kwargs: dict) -> FakeHttpResponse:
+            self.calls.append(("POST", url, kwargs))
+            return FakeHttpResponse(json_body={"access_token": "x-token"})
+
+        def get(self, url: str, **kwargs: dict) -> FakeHttpResponse:
+            self.calls.append(("GET", url, kwargs))
+            return FakeHttpResponse(json_body={"data": {"id": "x-user-1", "username": "rarex", "name": "Rare X"}})
+
+    fake_http = XHttpClient()
+    adapter = XOAuthAdapter(
+        client_id="x-client",
+        client_secret="x-secret",
+        redirect_uri="https://api.example.com/v1/upgrades/l2/social/callback?provider=x",
+        http_client=fake_http,
+    )
+
+    auth_start = adapter.start_authorization(state="state-x")
+    parsed = urlparse(auth_start["authorize_url"])
+    query = parse_qs(parsed.query)
+    assert parsed.netloc == "twitter.com"
+    assert query["code_challenge_method"] == ["S256"]
+    assert query["scope"] == ["users.read"]
+    provider_context = auth_start["provider_context"]
+    assert provider_context["code_verifier"]
+
+    snapshot = adapter.exchange_code(code="x-code", state="state-x", provider_context=provider_context)
+    assert snapshot["provider"] == "x"
+    assert snapshot["provider_user_id"] == "x-user-1"
+    assert snapshot["username_or_handle"] == "rarex"
+    _, _, token_kwargs = fake_http.calls[0]
+    assert token_kwargs["data"]["code_verifier"] == provider_context["code_verifier"]
+    assert token_kwargs["auth"] == ("x-client", "x-secret")
+
+
+def test_x_oauth_adapter_requires_pkce_context_and_profile_fields() -> None:
+    class MissingFieldsXHttpClient:
+        def post(self, url: str, **kwargs: dict) -> FakeHttpResponse:
+            return FakeHttpResponse(json_body={"access_token": "x-token"})
+
+        def get(self, url: str, **kwargs: dict) -> FakeHttpResponse:
+            return FakeHttpResponse(json_body={"data": {"id": "", "username": ""}})
+
+    adapter = XOAuthAdapter(
+        client_id="x-client",
+        client_secret="x-secret",
+        redirect_uri="https://api.example.com/v1/upgrades/l2/social/callback?provider=x",
+        http_client=MissingFieldsXHttpClient(),
+    )
+    with pytest.raises(TokenValidationError, match="x oauth state missing code_verifier"):
+        adapter.exchange_code(code="x-code", state="state-x")
+    with pytest.raises(TokenValidationError, match="x user profile missing id/username"):
+        adapter.exchange_code(
+            code="x-code",
+            state="state-x",
+            provider_context={"code_verifier": "verifier"},
+        )
 
 
 def test_kms_backends_raise_clear_error_without_google_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:

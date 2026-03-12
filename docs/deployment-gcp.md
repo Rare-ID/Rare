@@ -16,16 +16,16 @@ The Cloud Run service expects these production settings:
 - `RARE_KEY_PROVIDER=gcp_secret_manager`
 - `RARE_HOSTED_KEY_CIPHER=gcp_kms`
 - `RARE_EMAIL_PROVIDER=sendgrid`
-- `RARE_SOCIAL_PROVIDER_ALLOWLIST=github`
+- `RARE_SOCIAL_PROVIDER_ALLOWLIST=github,x,linkedin`
 - `RARE_DNS_RESOLVER=public`
 - `RARE_ALLOW_LOCAL_UPGRADE_SHORTCUTS=false`
 
-Use Direct VPC egress with `private-ranges-only`. This service needs private access to Cloud SQL and Redis, but it must keep Google API traffic and third-party outbound traffic on public egress for Secret Manager, KMS, GitHub OAuth, SendGrid, and public DNS lookups.
+Use Direct VPC egress with `private-ranges-only`. This service needs private access to Cloud SQL and Redis, but it must keep Google API traffic and third-party outbound traffic on public egress for Secret Manager, KMS, GitHub OAuth, LinkedIn OAuth, X OAuth, SendGrid, and public DNS lookups.
 
 ## App-Level Production Features
 
 - Real SendGrid mail send for L1 upgrade links
-- Real GitHub OAuth exchange for L2 upgrade
+- Real GitHub / LinkedIn / X OAuth exchange for L2 upgrade
 - Real Secret Manager keyring storage
 - Public DNS TXT verification for platform onboarding
 - `GET /healthz` and `GET /readyz`
@@ -34,5 +34,5 @@ Use Direct VPC egress with `private-ranges-only`. This service needs private acc
 
 1. Build and push the image referenced by `image` in `terraform.tfvars`.
 2. Point `api_domain` at the eventual load balancer IP.
-3. Fill in `sendgrid_api_key`, `sendgrid_from_email`, `github_client_id`, `github_client_secret`, and `admin_token`.
+3. Fill in `sendgrid_api_key`, `sendgrid_from_email`, `github_client_id`, `github_client_secret`, `linkedin_client_id`, `linkedin_client_secret`, `x_client_id`, `x_client_secret`, and `admin_token`.
 4. Ensure the target VPC network and subnetwork already exist.

@@ -97,6 +97,26 @@ variable "github_client_secret" {
   sensitive = true
 }
 
+variable "linkedin_client_id" {
+  type      = string
+  sensitive = true
+}
+
+variable "linkedin_client_secret" {
+  type      = string
+  sensitive = true
+}
+
+variable "x_client_id" {
+  type      = string
+  sensitive = true
+}
+
+variable "x_client_secret" {
+  type      = string
+  sensitive = true
+}
+
 variable "admin_token" {
   type      = string
   sensitive = true

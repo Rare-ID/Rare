@@ -79,7 +79,7 @@ rare request-upgrade --level L1 --email alice@example.com
 rare send-l1-link --request-id <request_id>
 rare upgrade-status --request-id <request_id>
 rare request-upgrade --level L2
-rare start-social --request-id <request_id> --provider github
+rare start-social --request-id <request_id> --provider linkedin
 
 # produce login material for a third-party platform
 rare issue-full-attestation --aud platform
@@ -90,7 +90,7 @@ rare login --aud platform --public-only
 rare recovery-factors
 rare recover-hosted-token-email
 rare recover-hosted-token-email-verify --token <token>
-rare recover-hosted-token-social-start --provider github
+rare recover-hosted-token-social-start --provider x
 rare show-state --paths
 ```
 

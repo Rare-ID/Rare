@@ -18,9 +18,11 @@ from rare_api.integrations import (
     GcpKmsEd25519JwsSigner,
     GcpKmsHostedKeyCipher,
     GitHubOAuthAdapter,
+    LinkedInOAuthAdapter,
     LocalAesGcmHostedKeyCipher,
     NoopEmailProvider,
     SendGridEmailProvider,
+    XOAuthAdapter,
     resolve_public_dns_txt,
 )
 from rare_api.key_provider import EphemeralKeyProvider, FileKeyProvider, GcpSecretManagerKeyProvider
@@ -618,12 +620,17 @@ def create_app(service: RareService | None = None, *, admin_token: str | None = 
         else:
             raise ValueError("RARE_DNS_RESOLVER must be one of: noop, public")
 
-        default_social_providers = ["github"] if runtime_env in {"staging", "prod"} else ["github", "x", "linkedin"]
+        default_social_providers = ["github", "x", "linkedin"]
         enabled_social_providers = _env_csv(
             "RARE_SOCIAL_PROVIDER_ALLOWLIST",
             default=default_social_providers,
         )
         social_provider_adapters = {}
+        callback_base = (
+            f"{public_base_url.rstrip('/')}/v1/upgrades/l2/social/callback"
+            if public_base_url
+            else "https://rare.local/v1/upgrades/l2/social/callback"
+        )
         if "github" in enabled_social_providers:
             github_client_id = os.getenv("RARE_GITHUB_CLIENT_ID")
             github_client_secret = os.getenv("RARE_GITHUB_CLIENT_SECRET")
@@ -633,21 +640,65 @@ def create_app(service: RareService | None = None, *, admin_token: str | None = 
                 social_provider_adapters["github"] = GitHubOAuthAdapter(
                     client_id=github_client_id,
                     client_secret=github_client_secret,
-                    redirect_uri=f"{public_base_url.rstrip('/')}/v1/upgrades/l2/social/callback?provider=github",
+                    redirect_uri=f"{callback_base}?provider=github",
                 )
             else:
-                social_provider_adapters["github"] = GitHubOAuthAdapter(
-                    client_id=github_client_id or "rare-dev-github",
-                    client_secret=github_client_secret or "rare-dev-secret",
-                    redirect_uri=(
-                        f"{public_base_url.rstrip('/')}/v1/upgrades/l2/social/callback?provider=github"
-                        if public_base_url
-                        else "https://rare.local/v1/upgrades/l2/social/callback?provider=github"
-                    ),
-                ) if github_client_id and github_client_secret else None  # type: ignore[assignment]
-        unsupported_enabled = set(enabled_social_providers) - {"github"}
-        if unsupported_enabled and runtime_env in {"staging", "prod"}:
-            raise ValueError("Only GitHub OAuth is implemented for staging/prod")
+                social_provider_adapters["github"] = (
+                    GitHubOAuthAdapter(
+                        client_id=github_client_id or "rare-dev-github",
+                        client_secret=github_client_secret or "rare-dev-secret",
+                        redirect_uri=f"{callback_base}?provider=github",
+                    )
+                    if github_client_id and github_client_secret
+                    else None
+                )  # type: ignore[assignment]
+        if "linkedin" in enabled_social_providers:
+            linkedin_client_id = os.getenv("RARE_LINKEDIN_CLIENT_ID")
+            linkedin_client_secret = os.getenv("RARE_LINKEDIN_CLIENT_SECRET")
+            linkedin_api_version = _env_str("RARE_LINKEDIN_API_VERSION", default="").strip() or None
+            if runtime_env in {"staging", "prod"}:
+                if not linkedin_client_id or not linkedin_client_secret:
+                    raise ValueError(
+                        "LinkedIn OAuth requires RARE_LINKEDIN_CLIENT_ID and RARE_LINKEDIN_CLIENT_SECRET"
+                    )
+                social_provider_adapters["linkedin"] = LinkedInOAuthAdapter(
+                    client_id=linkedin_client_id,
+                    client_secret=linkedin_client_secret,
+                    redirect_uri=f"{callback_base}?provider=linkedin",
+                    api_version=linkedin_api_version,
+                )
+            else:
+                social_provider_adapters["linkedin"] = (
+                    LinkedInOAuthAdapter(
+                        client_id=linkedin_client_id or "rare-dev-linkedin",
+                        client_secret=linkedin_client_secret or "rare-dev-secret",
+                        redirect_uri=f"{callback_base}?provider=linkedin",
+                        api_version=linkedin_api_version,
+                    )
+                    if linkedin_client_id and linkedin_client_secret
+                    else None
+                )  # type: ignore[assignment]
+        if "x" in enabled_social_providers:
+            x_client_id = os.getenv("RARE_X_CLIENT_ID")
+            x_client_secret = os.getenv("RARE_X_CLIENT_SECRET")
+            if runtime_env in {"staging", "prod"}:
+                if not x_client_id or not x_client_secret:
+                    raise ValueError("X OAuth requires RARE_X_CLIENT_ID and RARE_X_CLIENT_SECRET")
+                social_provider_adapters["x"] = XOAuthAdapter(
+                    client_id=x_client_id,
+                    client_secret=x_client_secret,
+                    redirect_uri=f"{callback_base}?provider=x",
+                )
+            else:
+                social_provider_adapters["x"] = (
+                    XOAuthAdapter(
+                        client_id=x_client_id or "rare-dev-x",
+                        client_secret=x_client_secret or "rare-dev-secret",
+                        redirect_uri=f"{callback_base}?provider=x",
+                    )
+                    if x_client_id and x_client_secret
+                    else None
+                )  # type: ignore[assignment]
         social_provider_adapters = {key: value for key, value in social_provider_adapters.items() if value is not None}
 
         resolved_admin_token = admin_token if admin_token is not None else os.getenv("RARE_ADMIN_TOKEN")

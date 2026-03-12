@@ -221,6 +221,7 @@ class UpgradeOAuthStateRecord:
     upgrade_request_id: str
     provider: str
     expires_at: int
+    provider_context: dict[str, Any] = field(default_factory=dict)
     used_at: int | None = None
     created_at: int = field(default_factory=now_ts)
 
@@ -240,6 +241,7 @@ class ManagementRecoveryOAuthStateRecord:
     agent_id: str
     provider: str
     expires_at: int
+    provider_context: dict[str, Any] = field(default_factory=dict)
     used_at: int | None = None
     created_at: int = field(default_factory=now_ts)
 
@@ -1464,6 +1466,29 @@ class RareService:
         ).strip()
         return provider_user_id, username_or_handle
 
+    @staticmethod
+    def _normalize_social_snapshot(*, provider: str, snapshot: dict[str, Any]) -> dict[str, Any]:
+        provider_user_id, username_or_handle = RareService._social_snapshot_identity(snapshot)
+        if not provider_user_id:
+            raise TokenValidationError(f"{provider} social account data missing id")
+        if provider in {"github", "x"} and not username_or_handle:
+            raise TokenValidationError(f"{provider} social account data missing handle")
+
+        normalized_snapshot = {
+            "provider": provider,
+            "provider_user_id": provider_user_id,
+            "display_name": str(snapshot.get("display_name") or username_or_handle or provider_user_id),
+            "profile_url": str(snapshot.get("profile_url") or ""),
+            "raw_snapshot": (
+                snapshot.get("raw_snapshot")
+                if isinstance(snapshot.get("raw_snapshot"), dict)
+                else snapshot
+            ),
+        }
+        if username_or_handle:
+            normalized_snapshot["username_or_handle"] = username_or_handle
+        return normalized_snapshot
+
     def _issue_recovered_hosted_management_token(
         self,
         *,
@@ -1612,11 +1637,20 @@ class RareService:
             raise PermissionError(f"{normalized_provider} recovery is not linked for this agent")
 
         state = generate_nonce(16)
+        adapter = self.social_provider_adapters.get(normalized_provider)
+        if adapter is None:
+            raise TokenValidationError(f"provider {normalized_provider} is not enabled")
+        auth_start = adapter.start_authorization(state=state)
         recovery_state = ManagementRecoveryOAuthStateRecord(
             state=state,
             agent_id=agent_id,
             provider=normalized_provider,
             expires_at=now + self.oauth_state_ttl_seconds,
+            provider_context=(
+                auth_start.get("provider_context")
+                if isinstance(auth_start.get("provider_context"), dict)
+                else {}
+            ),
         )
         self.management_recovery_oauth_states.set(
             key=state,
@@ -1624,10 +1658,6 @@ class RareService:
             expires_at=recovery_state.expires_at,
             now=now,
         )
-        adapter = self.social_provider_adapters.get(normalized_provider)
-        if adapter is None:
-            raise TokenValidationError(f"provider {normalized_provider} is not enabled")
-        authorize_url = adapter.build_authorize_url(state=state)
         self._append_audit_event(
             actor_type="agent",
             actor_id=agent_id,
@@ -1642,7 +1672,7 @@ class RareService:
             "provider": normalized_provider,
             "recovery_factor": "social",
             "state": state,
-            "authorize_url": authorize_url,
+            "authorize_url": str(auth_start["authorize_url"]),
             "callback_url": self._build_social_callback_url(provider=normalized_provider),
             "expires_at": recovery_state.expires_at,
         }
@@ -1693,7 +1723,11 @@ class RareService:
         adapter = self.social_provider_adapters.get(normalized_provider)
         if adapter is None:
             raise TokenValidationError(f"provider {normalized_provider} is not enabled")
-        provider_user_snapshot = adapter.exchange_code(code=code, state=state)
+        provider_user_snapshot = adapter.exchange_code(
+            code=code,
+            state=state,
+            provider_context=recovery_state.provider_context,
+        )
         recovery_state.used_at = now
         return self._complete_hosted_management_recovery_social(
             agent_id=recovery_state.agent_id,
@@ -2479,36 +2513,21 @@ class RareService:
             if not request.social_provider or request.social_provider not in SOCIAL_PROVIDERS:
                 raise TokenValidationError("L2 upgrade missing social provider verification")
             social_account = request.social_account or {}
-            provider_user_id = str(
-                social_account.get("provider_user_id")
-                or social_account.get("id")
-                or social_account.get("user_id")
-                or ""
-            ).strip()
-            username_or_handle = str(
-                social_account.get("username_or_handle")
-                or social_account.get("handle")
-                or social_account.get("login")
-                or social_account.get("vanity_name")
-                or ""
-            ).strip()
-            if not provider_user_id or not username_or_handle:
-                raise TokenValidationError(f"{request.social_provider} social account data missing")
-            normalized_snapshot = {
-                "provider": request.social_provider,
-                "provider_user_id": provider_user_id,
-                "username_or_handle": username_or_handle,
-                "display_name": str(social_account.get("display_name") or username_or_handle),
-                "profile_url": str(social_account.get("profile_url") or ""),
-                "raw_snapshot": social_account.get("raw_snapshot") if isinstance(social_account.get("raw_snapshot"), dict) else social_account,
-            }
+            normalized_snapshot = self._normalize_social_snapshot(
+                provider=request.social_provider,
+                snapshot=social_account,
+            )
+            provider_user_id = str(normalized_snapshot["provider_user_id"])
+            username_or_handle = str(normalized_snapshot.get("username_or_handle") or "").strip()
             record.social_accounts[request.social_provider] = normalized_snapshot
             if request.social_provider == "x":
                 record.twitter = {"user_id": provider_user_id, "handle": username_or_handle}
             elif request.social_provider == "github":
                 record.github = {"id": provider_user_id, "login": username_or_handle}
             elif request.social_provider == "linkedin":
-                record.linkedin = {"id": provider_user_id, "vanity_name": username_or_handle}
+                record.linkedin = {"id": provider_user_id}
+                if username_or_handle:
+                    record.linkedin["vanity_name"] = username_or_handle
             record.level = "L2"
             labels = set(profile.labels)
             if request.social_provider == "x":
@@ -2578,11 +2597,20 @@ class RareService:
             raise TokenValidationError("upgrade request is not waiting for social verification")
 
         state = generate_nonce(16)
+        adapter = self.social_provider_adapters.get(normalized_provider)
+        if adapter is None:
+            raise TokenValidationError("unsupported social provider")
+        auth_start = adapter.start_authorization(state=state)
         state_record = UpgradeOAuthStateRecord(
             state=state,
             upgrade_request_id=upgrade_request_id,
             provider=normalized_provider,
             expires_at=now + self.oauth_state_ttl_seconds,
+            provider_context=(
+                auth_start.get("provider_context")
+                if isinstance(auth_start.get("provider_context"), dict)
+                else {}
+            ),
         )
         self.upgrade_oauth_states.set(
             key=state,
@@ -2590,16 +2618,12 @@ class RareService:
             expires_at=state_record.expires_at,
             now=now,
         )
-        adapter = self.social_provider_adapters.get(normalized_provider)
-        if adapter is None:
-            raise TokenValidationError("unsupported social provider")
-        authorize_url = adapter.build_authorize_url(state=state)
         result = {
             "upgrade_request_id": upgrade_request_id,
             "provider": normalized_provider,
             "state": state,
             "expires_at": state_record.expires_at,
-            "authorize_url": authorize_url,
+            "authorize_url": str(auth_start["authorize_url"]),
         }
         self._append_audit_event(
             actor_type="agent",
@@ -2650,10 +2674,15 @@ class RareService:
 
         try:
             state_record.used_at = now
+
             adapter = self.social_provider_adapters.get(normalized_provider)
             if adapter is None:
                 raise TokenValidationError("unsupported social provider")
-            request.social_account = adapter.exchange_code(code=code, state=state)
+            request.social_account = adapter.exchange_code(
+                code=code,
+                state=state,
+                provider_context=state_record.provider_context,
+            )
             request.social_provider = normalized_provider
             request.social_verified_at = now
             request.status = "verified"
