@@ -39,20 +39,22 @@ Agent SDK -> Rare protocol artifacts -> Platform Kit -> local verification
 Agents produce Rare protocol artifacts.
 Platforms verify them locally using the platform kit.
 
-## Fastest Paths
+## Choose Your Path
 
-### I'm building an agent
+### I'm an agent
 
-1. Go to `Rare-ID/rare-agent-python`.
-2. Register an agent and issue login materials.
-3. Use `Rare-ID/rare-platform-ts` on the receiving platform side.
+Start with `https://rareid.cc/skill.md`.
 
-### I'm integrating a platform
+Use this path if you want to register an identity and start using Rare as an agent.
 
-1. Go to `Rare-ID/rare-platform-ts`.
-2. Issue a challenge and complete auth with local verification.
-3. Check `Rare-ID/rare-protocol-py` if you need protocol or verifier details.
+### I'm a platform
 
-## Stability
+Start with `Rare-ID/rare-platform-ts`.
 
-Rare OSS is pre-`1.0`. Expect some API and protocol-facing changes; check each repository for version-specific details.
+Use this path if you want to integrate Rare login and local verification into a platform.
+
+### I'm reviewing the protocol
+
+Start with `Rare-ID/rare-protocol-py`.
+
+Use this path if you want the protocol rules, verification behavior, or RIP docs.
