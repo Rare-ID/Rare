@@ -30,3 +30,9 @@ dist/
 *.tfstate.*
 terraform.tfvars
 *.tfplan
+
+# local runtime artifacts
+.tmp-run/
+.tmp-pip/
+tmp/
+tmp_agent_pytest_env/

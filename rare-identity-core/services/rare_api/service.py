@@ -2641,17 +2641,33 @@ class RareService:
         request = self._require_upgrade_request(state_record.upgrade_request_id)
         if request.target_level != "L2":
             raise TokenValidationError("upgrade request target is not L2")
-        state_record.used_at = now
+        previous_state_used_at = state_record.used_at
+        previous_social_provider = request.social_provider
+        previous_social_verified_at = request.social_verified_at
+        previous_social_account = request.social_account
+        previous_status = request.status
+        previous_last_transition_at = request.last_transition_at
 
-        adapter = self.social_provider_adapters.get(normalized_provider)
-        if adapter is None:
-            raise TokenValidationError("unsupported social provider")
-        request.social_account = adapter.exchange_code(code=code, state=state)
-        request.social_provider = normalized_provider
-        request.social_verified_at = now
-        request.status = "verified"
-        request.last_transition_at = now
-        result = self._apply_upgraded_level(request)
+        try:
+            state_record.used_at = now
+            adapter = self.social_provider_adapters.get(normalized_provider)
+            if adapter is None:
+                raise TokenValidationError("unsupported social provider")
+            request.social_account = adapter.exchange_code(code=code, state=state)
+            request.social_provider = normalized_provider
+            request.social_verified_at = now
+            request.status = "verified"
+            request.last_transition_at = now
+            result = self._apply_upgraded_level(request)
+        except Exception:
+            state_record.used_at = previous_state_used_at
+            request.social_provider = previous_social_provider
+            request.social_verified_at = previous_social_verified_at
+            request.social_account = previous_social_account
+            request.status = previous_status
+            request.last_transition_at = previous_last_transition_at
+            raise
+
         self._append_audit_event(
             actor_type="system",
             actor_id=normalized_provider,
@@ -2683,12 +2699,27 @@ class RareService:
             raise TokenValidationError("provider_user_snapshot must be object")
 
         now = now_ts()
-        request.social_provider = normalized_provider
-        request.social_verified_at = now
-        request.social_account = provider_user_snapshot
-        request.status = "verified"
-        request.last_transition_at = now
-        result = self._apply_upgraded_level(request)
+        previous_social_provider = request.social_provider
+        previous_social_verified_at = request.social_verified_at
+        previous_social_account = request.social_account
+        previous_status = request.status
+        previous_last_transition_at = request.last_transition_at
+
+        try:
+            request.social_provider = normalized_provider
+            request.social_verified_at = now
+            request.social_account = provider_user_snapshot
+            request.status = "verified"
+            request.last_transition_at = now
+            result = self._apply_upgraded_level(request)
+        except Exception:
+            request.social_provider = previous_social_provider
+            request.social_verified_at = previous_social_verified_at
+            request.social_account = previous_social_account
+            request.status = previous_status
+            request.last_transition_at = previous_last_transition_at
+            raise
+
         self._append_audit_event(
             actor_type="system",
             actor_id=normalized_provider,
