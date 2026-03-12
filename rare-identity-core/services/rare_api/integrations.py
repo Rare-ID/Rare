@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import html
 import json
 import secrets
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any, Protocol
 from urllib.parse import urlencode
 
@@ -203,9 +205,16 @@ class SendGridEmailProvider:
             recipient_hint=recipient_hint,
             subject="Rare identity upgrade verification",
             text_body=(
-                f"Open the following link to verify the upgrade request {upgrade_request_id}.\n\n"
+                f"Verify your Rare identity upgrade request {upgrade_request_id}.\n\n"
                 f"{verify_url}\n\n"
-                f"Expires at: {expires_at}"
+                f"Expires: {_human_deadline(expires_at)}\n\n"
+                "If you did not request this change, you can ignore this email."
+            ),
+            html_body=_build_upgrade_email_html(
+                upgrade_request_id=upgrade_request_id,
+                verify_url=verify_url,
+                expires_at=expires_at,
+                from_email=self.from_email,
             ),
         )
         return {
@@ -227,9 +236,16 @@ class SendGridEmailProvider:
             recipient_hint=recipient_hint,
             subject="Rare hosted token recovery",
             text_body=(
-                f"Open the following link to recover the hosted management token for agent {agent_id}.\n\n"
+                f"Recover the Rare hosted management token for agent {agent_id}.\n\n"
                 f"{verify_url}\n\n"
-                f"Expires at: {expires_at}"
+                f"Expires: {_human_deadline(expires_at)}\n\n"
+                "If you did not request this recovery, you can ignore this email."
+            ),
+            html_body=_build_recovery_email_html(
+                agent_id=agent_id,
+                verify_url=verify_url,
+                expires_at=expires_at,
+                from_email=self.from_email,
             ),
         )
         return {
@@ -245,18 +261,30 @@ class SendGridEmailProvider:
         recipient_hint: str,
         subject: str,
         text_body: str,
+        html_body: str | None = None,
     ) -> dict[str, Any]:
+        content = [
+            {
+                "type": "text/plain",
+                "value": text_body,
+            }
+        ]
+        if html_body is not None:
+            content.append(
+                {
+                    "type": "text/html",
+                    "value": html_body,
+                }
+            )
         payload = {
             "personalizations": [{"to": [{"email": recipient_hint}]}],
             "from": {"email": self.from_email},
             "subject": subject,
-            "content": [
-                {
-                    "type": "text/plain",
-                    "value": text_body,
-                }
-            ],
+            "content": content,
         }
+        reply_to = _reply_to_email(self.from_email)
+        if reply_to is not None:
+            payload["reply_to"] = {"email": reply_to}
         response = self._post_mail(payload=payload)
         response.raise_for_status()
         request_id = response.headers.get("x-message-id") or response.headers.get("x-request-id")
@@ -288,6 +316,125 @@ class SendGridEmailProvider:
                 headers=headers,
                 json=payload,
             )
+
+
+def _reply_to_email(from_email: str) -> str | None:
+    local, sep, domain = from_email.partition("@")
+    if sep != "@" or not domain:
+        return None
+    if local.lower() == "contact":
+        return from_email
+    return f"contact@{domain}"
+
+
+def _format_email_timestamp(timestamp: int) -> str:
+    dt = datetime.fromtimestamp(timestamp, UTC)
+    return dt.strftime("%b %d, %Y, %I:%M %p UTC").replace(" 0", " ")
+
+
+def _human_deadline(expires_at: int) -> str:
+    now = int(datetime.now(UTC).timestamp())
+    remaining = max(0, expires_at - now)
+    if remaining < 3600:
+        amount = max(1, remaining // 60 or 1)
+        unit = "minute"
+    elif remaining < 86400:
+        amount = remaining // 3600
+        unit = "hour"
+    else:
+        amount = remaining // 86400
+        unit = "day"
+    plural = "" if amount == 1 else "s"
+    return f"{_format_email_timestamp(expires_at)} (in about {amount} {unit}{plural})"
+
+
+def _email_shell(*, eyebrow: str, title: str, body_html: str, cta_label: str, cta_url: str, footer_email: str) -> str:
+    safe_eyebrow = html.escape(eyebrow)
+    safe_title = html.escape(title)
+    safe_url = html.escape(cta_url, quote=True)
+    safe_cta = html.escape(cta_label)
+    safe_footer_email = html.escape(_reply_to_email(footer_email) or footer_email)
+    return f"""\
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light only" />
+    <meta name="supported-color-schemes" content="light" />
+    <style>
+      :root {{
+        color-scheme: light only;
+        supported-color-schemes: light;
+      }}
+      body, table, td, div, p, a {{
+        font-family: Georgia, "Times New Roman", serif;
+      }}
+    </style>
+  </head>
+  <body style="margin:0;padding:0;background:#f2f2f2;color:#111111;font-family:Georgia,'Times New Roman',serif;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:32px 16px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#ffffff;border:1px solid #d8d8d8;border-radius:24px;overflow:hidden;">
+            <tr>
+              <td style="padding:28px 32px 18px;background:#ffffff;border-bottom:1px solid #e5e5e5;">
+                <div style="font-family:'Courier New',monospace;font-size:12px;letter-spacing:0.18em;text-transform:uppercase;color:#555555 !important;-webkit-text-fill-color:#555555;margin-bottom:14px;">{safe_eyebrow}</div>
+                <div style="font-size:38px;line-height:0.95;font-weight:700;color:#111111 !important;-webkit-text-fill-color:#111111;">{safe_title}</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:28px 32px 32px;font-size:16px;line-height:1.65;color:#111111 !important;-webkit-text-fill-color:#111111;">
+                {body_html}
+                <p style="margin:28px 0 0;">
+                  <a href="{safe_url}" style="display:inline-block;padding:14px 22px;background:#111111;color:#ffffff;text-decoration:none;border-radius:14px;font-weight:700;">{safe_cta}</a>
+                </p>
+                <p style="margin:24px 0 0;color:#666666;font-size:14px;line-height:1.6;">
+                  Need help? Reply to {safe_footer_email}.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
+"""
+
+
+def _build_upgrade_email_html(*, upgrade_request_id: str, verify_url: str, expires_at: int, from_email: str) -> str:
+    body_html = (
+        f"<p style=\"margin:0 0 16px;\">Verify your Rare L1 upgrade request "
+        f"<strong>{html.escape(upgrade_request_id)}</strong>.</p>"
+        f"<p style=\"margin:0 0 16px;\">This link expires <strong>{html.escape(_human_deadline(expires_at))}</strong>.</p>"
+        "<p style=\"margin:0;\">If you did not request this change, you can ignore this email.</p>"
+    )
+    return _email_shell(
+        eyebrow="Rare Identity",
+        title="Verify your email",
+        body_html=body_html,
+        cta_label="Verify email",
+        cta_url=verify_url,
+        footer_email=from_email,
+    )
+
+
+def _build_recovery_email_html(*, agent_id: str, verify_url: str, expires_at: int, from_email: str) -> str:
+    body_html = (
+        f"<p style=\"margin:0 0 16px;\">Recover the hosted management token for "
+        f"<strong>{html.escape(agent_id)}</strong>.</p>"
+        f"<p style=\"margin:0 0 16px;\">This recovery link expires <strong>{html.escape(_human_deadline(expires_at))}</strong>.</p>"
+        "<p style=\"margin:0;\">If you did not request this recovery, you can ignore this email.</p>"
+    )
+    return _email_shell(
+        eyebrow="Rare Recovery",
+        title="Recover hosted access",
+        body_html=body_html,
+        cta_label="Recover token",
+        cta_url=verify_url,
+        footer_email=from_email,
+    )
 
 
 class SocialProviderAdapter(Protocol):

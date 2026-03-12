@@ -827,6 +827,14 @@ def test_hosted_management_token_can_be_recovered_via_email_factor(env: dict) ->
     )
     assert recovered_status.status_code == 200
 
+    sent_browser = client.post("/v1/signer/recovery/email/send-link", json={"agent_id": agent.agent_id})
+    assert sent_browser.status_code == 200
+    recovered_page = client.get("/v1/signer/recovery/email/verify", params={"token": sent_browser.json()["token"]})
+    assert recovered_page.status_code == 200
+    assert "text/html" in recovered_page.headers["content-type"]
+    assert "Hosted access recovered" in recovered_page.text
+    assert "Store it now before closing this page" in recovered_page.text
+
 
 def test_hosted_management_token_social_recovery_requires_linked_account(env: dict) -> None:
     client = env["client"]
@@ -2386,6 +2394,29 @@ def test_magic_link_verify_query_can_be_enabled(monkeypatch: pytest.MonkeyPatch)
     assert sent.status_code == 200
     verified = client.get("/v1/upgrades/l1/email/verify", params={"token": sent.json()["token"]})
     assert verified.status_code == 200
+    assert "text/html" in verified.headers["content-type"]
+    assert "Email verified" in verified.text
+
+
+def test_magic_link_verify_query_renders_html_error_page(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RARE_ENABLE_LEGACY_MAGIC_LINK_QUERY_VERIFY", "1")
+    service = RareService(allow_local_upgrade_shortcuts=True)
+    client = TestClient(create_app(service))
+
+    failed = client.get("/v1/upgrades/l1/email/verify", params={"token": "missing-token"})
+
+    assert failed.status_code == 404
+    assert "text/html" in failed.headers["content-type"]
+    assert "Verification link failed" in failed.text
+    assert "/static/favicon.svg" in failed.text
+
+
+def test_static_favicon_is_served(env: dict) -> None:
+    response = env["client"].get("/static/favicon.svg")
+
+    assert response.status_code == 200
+    assert "image/svg+xml" in response.headers["content-type"]
+    assert "<svg" in response.text
 
 
 def test_public_base_url_emits_clickable_magic_link_and_enables_query_verify(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2418,6 +2449,7 @@ def test_public_base_url_emits_clickable_magic_link_and_enables_query_verify(mon
     token = parse_qs(parsed.query)["token"][0]
     verified = client.get(parsed.path, params={"token": token})
     assert verified.status_code == 200
+    assert "Email verified" in verified.text
 
 
 def test_request_body_size_limit_enforced(env: dict) -> None:
@@ -2779,6 +2811,11 @@ def test_sendgrid_provider_sends_real_http_request_shape() -> None:
     assert method == "POST"
     assert url == "https://api.sendgrid.com/v3/mail/send"
     assert kwargs["json"]["personalizations"][0]["to"][0]["email"] == "owner@example.com"
+    assert kwargs["json"]["reply_to"]["email"] == "contact@example.com"
+    content_types = [item["type"] for item in kwargs["json"]["content"]]
+    assert content_types == ["text/plain", "text/html"]
+    assert "Verify email" in kwargs["json"]["content"][1]["value"]
+    assert 'content="light only"' in kwargs["json"]["content"][1]["value"]
 
     recovery = provider.send_management_recovery_link(
         recipient_hint="owner@example.com",
@@ -2788,6 +2825,8 @@ def test_sendgrid_provider_sends_real_http_request_shape() -> None:
     )
     assert recovery["provider"] == "sendgrid"
     assert recovery["agent_id"] == "agent-1"
+    _, _, recovery_kwargs = fake_http.calls[1]
+    assert "Recover token" in recovery_kwargs["json"]["content"][1]["value"]
 
 
 def test_github_oauth_adapter_builds_and_exchanges_with_real_endpoints() -> None:

@@ -39,3 +39,6 @@ testpaths = ["tests"]
 [tool.setuptools.packages.find]
 where = ["services"]
 include = ["rare_api*"]
+
+[tool.setuptools.package-data]
+rare_api = ["static/*"]
