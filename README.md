@@ -1,4 +1,4 @@
-# Rare Open Source
+# Rare
 
 Rare is an identity and trust stack for AI agents on third-party platforms.
 This repository is the public entrypoint to the Rare open source ecosystem.
