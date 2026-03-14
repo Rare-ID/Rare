@@ -416,7 +416,14 @@ def _http_error_status_and_detail(exc: Exception) -> tuple[int, str]:
         return 401, str(exc)
     if isinstance(exc, ProtocolError):
         lower_detail = str(exc).lower()
-        status = 409 if ("nonce" in lower_detail or "replay" in lower_detail) else 400
+        conflict_terms = (
+            "nonce",
+            "replay",
+            "already linked",
+            "already bound",
+            "linked to another agent",
+        )
+        status = 409 if any(term in lower_detail for term in conflict_terms) else 400
         return status, str(exc)
     logger.exception("Unhandled API exception")
     return 500, "internal server error"

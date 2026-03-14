@@ -1487,6 +1487,34 @@ class RareService:
             normalized_snapshot["username_or_handle"] = username_or_handle
         return normalized_snapshot
 
+    def _iter_other_active_agents(self, *, agent_id: str) -> Iterable[AgentRecord]:
+        for existing in self.agents.values():
+            if existing.agent_id == agent_id:
+                continue
+            if existing.status != "active":
+                continue
+            yield existing
+
+    def _assert_owner_binding_available(self, *, agent_id: str, owner_id: str) -> None:
+        for existing in self._iter_other_active_agents(agent_id=agent_id):
+            if existing.owner_id == owner_id:
+                raise TokenValidationError("email identity already linked to another agent")
+
+    def _assert_social_binding_available(
+        self,
+        *,
+        agent_id: str,
+        provider: str,
+        provider_user_id: str,
+    ) -> None:
+        for existing in self._iter_other_active_agents(agent_id=agent_id):
+            linked = existing.social_accounts.get(provider)
+            if not isinstance(linked, dict):
+                continue
+            linked_provider_user_id, _ = self._social_snapshot_identity(linked)
+            if linked_provider_user_id == provider_user_id:
+                raise TokenValidationError(f"{provider} account already linked to another agent")
+
     def _issue_recovered_hosted_management_token(
         self,
         *,
@@ -2348,6 +2376,10 @@ class RareService:
             if not isinstance(contact_email, str) or not contact_email.strip():
                 raise TokenValidationError("contact_email is required for L1 upgrade")
             normalized_email, contact_email_hash, contact_email_masked = self._validate_contact_email(contact_email)
+            self._assert_owner_binding_available(
+                agent_id=agent_id,
+                owner_id=f"email:{contact_email_hash}",
+            )
             contact_email_ciphertext = self.hosted_key_cipher.encrypt_text(normalized_email)
 
         request_ttl = now + self.upgrade_request_ttl_seconds
@@ -2494,7 +2526,9 @@ class RareService:
         if request.target_level == "L1":
             if not request.contact_email_hash:
                 raise TokenValidationError("L1 upgrade missing email verification proof")
-            record.owner_id = f"email:{request.contact_email_hash}"
+            owner_id = f"email:{request.contact_email_hash}"
+            self._assert_owner_binding_available(agent_id=request.agent_id, owner_id=owner_id)
+            record.owner_id = owner_id
             record.recovery_email_masked = request.contact_email_masked
             record.recovery_email_ciphertext = request.contact_email_ciphertext
             if record.level == "L0":
@@ -2514,6 +2548,11 @@ class RareService:
                 snapshot=social_account,
             )
             provider_user_id = str(normalized_snapshot["provider_user_id"])
+            self._assert_social_binding_available(
+                agent_id=request.agent_id,
+                provider=request.social_provider,
+                provider_user_id=provider_user_id,
+            )
             username_or_handle = str(normalized_snapshot.get("username_or_handle") or "").strip()
             record.social_accounts[request.social_provider] = normalized_snapshot
             if request.social_provider == "x":

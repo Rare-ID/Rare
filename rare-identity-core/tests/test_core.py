@@ -693,6 +693,43 @@ def test_upgrade_l1_magic_link_flow_and_nonce_replay(env: dict) -> None:
     assert reused.status_code == 400
 
 
+def test_upgrade_l1_rejects_email_already_linked_to_another_agent(env: dict) -> None:
+    client = env["client"]
+    first_agent = register_agent(client, "upgrade-l1-owner-a")
+    second_agent = register_agent(client, "upgrade-l1-owner-b")
+
+    first_request_id = "upg-l1-owner-a"
+    signed_first = sign_hosted_upgrade_request(
+        client,
+        agent_id=first_agent.agent_id,
+        target_level="L1",
+        request_id=first_request_id,
+        hosted_management_token=first_agent.hosted_management_token or "",
+    )
+    created_first = client.post(
+        "/v1/upgrades/requests",
+        json={**signed_first, "contact_email": "unique-owner@example.com"},
+    )
+    assert created_first.status_code == 200
+    verified_first = client.post("/v1/upgrades/l1/email/verify", json={"token": created_first.json()["token"]})
+    assert verified_first.status_code == 200
+
+    second_request_id = "upg-l1-owner-b"
+    signed_second = sign_hosted_upgrade_request(
+        client,
+        agent_id=second_agent.agent_id,
+        target_level="L1",
+        request_id=second_request_id,
+        hosted_management_token=second_agent.hosted_management_token or "",
+    )
+    created_second = client.post(
+        "/v1/upgrades/requests",
+        json={**signed_second, "contact_email": "unique-owner@example.com"},
+    )
+    assert created_second.status_code == 409
+    assert "already linked to another agent" in created_second.json()["detail"]
+
+
 def test_upgrade_l1_request_can_skip_auto_send_and_reports_delivery_failure() -> None:
     class FailingEmailProvider:
         def send_upgrade_link(
@@ -1149,6 +1186,71 @@ def test_upgrade_l2_requires_l1_and_supports_x_github_and_linkedin(env: dict) ->
         expected_aud="platform-linkedin-complete",
     )
     assert linkedin_verified.payload["claims"]["linkedin"]["id"] == "linkedin-200"
+
+
+def test_upgrade_l2_rejects_social_account_already_linked_to_another_agent(env: dict) -> None:
+    client = env["client"]
+    first_agent = register_agent(client, "upgrade-l2-social-a")
+    second_agent = register_agent(client, "upgrade-l2-social-b")
+
+    def upgrade_l1(agent: RegisteredAgent, request_id: str, email: str) -> None:
+        signed = sign_hosted_upgrade_request(
+            client,
+            agent_id=agent.agent_id,
+            target_level="L1",
+            request_id=request_id,
+            hosted_management_token=agent.hosted_management_token or "",
+        )
+        created = client.post("/v1/upgrades/requests", json={**signed, "contact_email": email})
+        assert created.status_code == 200
+        verified = client.post("/v1/upgrades/l1/email/verify", json={"token": created.json()["token"]})
+        assert verified.status_code == 200
+
+    upgrade_l1(first_agent, "upg-l2-social-a-l1", "social-owner-a@example.com")
+    upgrade_l1(second_agent, "upg-l2-social-b-l1", "social-owner-b@example.com")
+
+    first_l2_request_id = "upg-l2-social-a"
+    signed_first_l2 = sign_hosted_upgrade_request(
+        client,
+        agent_id=first_agent.agent_id,
+        target_level="L2",
+        request_id=first_l2_request_id,
+        hosted_management_token=first_agent.hosted_management_token or "",
+    )
+    created_first_l2 = client.post("/v1/upgrades/requests", json=signed_first_l2)
+    assert created_first_l2.status_code == 200
+    completed_first_l2 = client.post(
+        "/v1/upgrades/l2/social/complete",
+        json={
+            "upgrade_request_id": first_l2_request_id,
+            "provider": "github",
+            "provider_user_snapshot": {"id": "shared-github-1", "login": "shared-owner"},
+        },
+        headers=hosted_headers(first_agent),
+    )
+    assert completed_first_l2.status_code == 200
+
+    second_l2_request_id = "upg-l2-social-b"
+    signed_second_l2 = sign_hosted_upgrade_request(
+        client,
+        agent_id=second_agent.agent_id,
+        target_level="L2",
+        request_id=second_l2_request_id,
+        hosted_management_token=second_agent.hosted_management_token or "",
+    )
+    created_second_l2 = client.post("/v1/upgrades/requests", json=signed_second_l2)
+    assert created_second_l2.status_code == 200
+    completed_second_l2 = client.post(
+        "/v1/upgrades/l2/social/complete",
+        json={
+            "upgrade_request_id": second_l2_request_id,
+            "provider": "github",
+            "provider_user_snapshot": {"id": "shared-github-1", "login": "shared-owner"},
+        },
+        headers=hosted_headers(second_agent),
+    )
+    assert completed_second_l2.status_code == 409
+    assert "already linked to another agent" in completed_second_l2.json()["detail"]
 
 
 def test_breaking_rejects_legacy_identity_typ(env: dict) -> None:
