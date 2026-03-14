@@ -1323,6 +1323,137 @@ def test_upgrade_l2_linkedin_callback_updates_attestation_claims(env: dict) -> N
     assert verified.payload["claims"]["linkedin"]["vanity_name"].startswith("li_")
 
 
+def test_upgrade_l2_social_callback_returns_html_for_browser_accept(env: dict) -> None:
+    client = env["client"]
+    agent = register_agent(client, "browser-social-agent")
+
+    l1_request_id = "browser-social-l1"
+    signed_l1 = sign_hosted_upgrade_request(
+        client,
+        agent_id=agent.agent_id,
+        target_level="L1",
+        request_id=l1_request_id,
+        hosted_management_token=agent.hosted_management_token or "",
+    )
+    created_l1 = client.post(
+        "/v1/upgrades/requests",
+        json={**signed_l1, "contact_email": "browser-social@example.com"},
+    )
+    assert created_l1.status_code == 200
+    verified_l1 = client.post("/v1/upgrades/l1/email/verify", json={"token": created_l1.json()["token"]})
+    assert verified_l1.status_code == 200
+
+    l2_request_id = "browser-social-l2"
+    signed_l2 = sign_hosted_upgrade_request(
+        client,
+        agent_id=agent.agent_id,
+        target_level="L2",
+        request_id=l2_request_id,
+        hosted_management_token=agent.hosted_management_token or "",
+    )
+    created_l2 = client.post("/v1/upgrades/requests", json=signed_l2)
+    assert created_l2.status_code == 200
+    started = client.post(
+        "/v1/upgrades/l2/social/start",
+        json={"upgrade_request_id": l2_request_id, "provider": "github"},
+        headers=hosted_headers(agent),
+    )
+    assert started.status_code == 200
+
+    callback = client.get(
+        "/v1/upgrades/l2/social/callback",
+        params={"provider": "github", "code": "browser-code", "state": started.json()["state"]},
+        headers={"Accept": "text/html"},
+    )
+    assert callback.status_code == 200
+    assert "text/html" in callback.headers["content-type"]
+    assert "Social verification complete" in callback.text
+    assert "github" in callback.text
+
+
+def test_hosted_management_social_recovery_callback_returns_html_for_browser_accept(env: dict) -> None:
+    client = env["client"]
+    service = env["service"]
+    agent = register_agent(client, "browser-recovery-agent")
+
+    class FixedGitHubAdapter:
+        def start_authorization(self, *, state: str) -> dict[str, str | dict[str, str]]:
+            return {"authorize_url": f"https://oauth.github.local/authorize?state={state}", "provider_context": {}}
+
+        def exchange_code(
+            self,
+            *,
+            code: str,
+            state: str,
+            provider_context: dict[str, str] | None = None,
+        ) -> dict[str, str | dict[str, str]]:
+            return {
+                "provider": "github",
+                "provider_user_id": "42",
+                "username_or_handle": "rare-dev",
+                "display_name": "Rare Dev",
+                "profile_url": "https://github.com/rare-dev",
+                "raw_snapshot": {"id": "42", "login": "rare-dev"},
+            }
+
+        def readiness(self) -> dict[str, str]:
+            return {"status": "ok", "backend": "stub", "provider": "github"}
+
+    service.social_provider_adapters["github"] = FixedGitHubAdapter()
+
+    l1_request_id = "browser-recovery-l1"
+    signed_l1 = sign_hosted_upgrade_request(
+        client,
+        agent_id=agent.agent_id,
+        target_level="L1",
+        request_id=l1_request_id,
+        hosted_management_token=agent.hosted_management_token or "",
+    )
+    created_l1 = client.post(
+        "/v1/upgrades/requests",
+        json={**signed_l1, "contact_email": "browser-recovery@example.com"},
+    )
+    assert created_l1.status_code == 200
+    verified_l1 = client.post("/v1/upgrades/l1/email/verify", json={"token": created_l1.json()["token"]})
+    assert verified_l1.status_code == 200
+
+    l2_request_id = "browser-recovery-l2"
+    signed_l2 = sign_hosted_upgrade_request(
+        client,
+        agent_id=agent.agent_id,
+        target_level="L2",
+        request_id=l2_request_id,
+        hosted_management_token=agent.hosted_management_token or "",
+    )
+    created_l2 = client.post("/v1/upgrades/requests", json=signed_l2)
+    assert created_l2.status_code == 200
+    completed_l2 = client.post(
+        "/v1/upgrades/l2/social/complete",
+        json={
+            "upgrade_request_id": l2_request_id,
+            "provider": "github",
+            "provider_user_snapshot": {"id": "42", "login": "rare-dev"},
+        },
+        headers=hosted_headers(agent),
+    )
+    assert completed_l2.status_code == 200
+
+    started = client.post(
+        "/v1/signer/recovery/social/start",
+        json={"agent_id": agent.agent_id, "provider": "github"},
+    )
+    assert started.status_code == 200
+    callback = client.get(
+        "/v1/signer/recovery/social/callback",
+        params={"provider": "github", "code": "browser-recovery-code", "state": started.json()["state"]},
+        headers={"Accept": "text/html"},
+    )
+    assert callback.status_code == 200
+    assert "text/html" in callback.headers["content-type"]
+    assert "Social recovery complete" in callback.text
+    assert "github" in callback.text
+
+
 def test_platform_registration_dns_mismatch_expired_and_reuse(env: dict) -> None:
     client = env["client"]
     service = env["service"]

@@ -23,15 +23,18 @@ Use this skill when the user wants an agent to read `https://rareid.cc/skill.md`
 - `host_mode`: recommend `hosted-signer`
 - trust level: start at `L0`
 - platform login: prefer public attestation before full attestation
+- production `L2` social providers: `github`, `linkedin`, `x`
 
 ## Interaction Rules
 
 - Explain that `name` is a display name, not the identity key.
 - Explain that `agent_id` is the long-term Ed25519 public key.
 - Ask for `email` only when the user chooses `L1`.
-- Ask for `provider` only when the user chooses `L2`.
+- Ask for `provider` only when the user chooses `L2`, and constrain choices to `github`, `linkedin`, or `x`.
 - Ask for `platform_url` and `aud` only when the user wants platform login or platform-bound attestation.
+- Explain that production `L2` currently requires the agent to already be at `L1` or higher before a social upgrade request can be created.
 - Do not claim `L1` or `L2` is complete until the external email or OAuth step is finished and status is re-checked.
+- Treat `start-social` success as "OAuth started", not "L2 complete". The final state must come from the callback completing and the upgrade status changing.
 
 ## Hosted Vs Self-Hosted
 
@@ -45,6 +48,12 @@ Use this skill when the user wants an agent to read `https://rareid.cc/skill.md`
 3. Confirm the result contains an `agent_id`.
 4. Ask what the user wants next only after registration succeeds.
 5. Branch into upgrade, attestation, rename, recovery, or platform login only when requested.
+
+## Production Notes
+
+- As verified on 2026-03-13, `https://api.rareid.cc/healthz` reports `enabled_social_providers` as `github`, `linkedin`, and `x`.
+- As verified on 2026-03-13, the production flow works through `register -> L1 verify -> L2 request -> start-social`, and all three providers reach their real login/authorization pages.
+- Do not infer that provider support is GitHub-only unless the live health/readiness checks say so.
 
 ## Resource Map
 

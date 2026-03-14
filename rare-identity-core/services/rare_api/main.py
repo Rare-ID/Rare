@@ -442,9 +442,9 @@ def _status_page_html(
         rendered = []
         for label, value in detail_rows:
             rendered.append(
-                "<div style=\"display:flex;justify-content:space-between;gap:16px;padding:12px 0;border-top:1px solid rgba(31,26,23,0.09);\">"
-                f"<span style=\"color:#6f675b;\">{escape(label)}</span>"
-                f"<strong style=\"text-align:right;\">{escape(value)}</strong>"
+                "<div style=\"display:flex;justify-content:space-between;gap:16px;padding:12px 0;border-top:1px solid rgba(255,255,255,0.12);\">"
+                f"<span style=\"color:#a6a6a6;\">{escape(label)}</span>"
+                f"<strong style=\"text-align:right;color:#ffffff;\">{escape(value)}</strong>"
                 "</div>"
             )
         rows = "".join(rendered)
@@ -453,17 +453,18 @@ def _status_page_html(
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
     <title>{escape(title)} | Rare</title>
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
   </head>
-  <body style="margin:0;background:#f2f2f2;color:#111111;font-family:Georgia,'Times New Roman',serif;">
+  <body style="margin:0;background:#050505;color:#ffffff;font-family:Georgia,'Times New Roman',serif;">
     <main style="max-width:720px;margin:0 auto;padding:28px 16px 56px;">
-      <section style="background:#ffffff;border:1px solid #d8d8d8;border-radius:26px;overflow:hidden;box-shadow:0 18px 40px rgba(17,17,17,0.08);">
+      <section style="background:#0d0d0d;border:1px solid rgba(255,255,255,0.14);border-radius:26px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.45);">
         <div style="padding:28px 32px 18px;background:{accent};">
-          <div style="font-family:'Courier New',monospace;font-size:12px;letter-spacing:0.18em;text-transform:uppercase;color:#5a5a5a;margin-bottom:14px;">{escape(eyebrow)}</div>
-          <h1 style="margin:0;font-size:42px;line-height:0.95;">{escape(title)}</h1>
+          <div style="font-family:'Courier New',monospace;font-size:12px;letter-spacing:0.18em;text-transform:uppercase;color:#d0d0d0;margin-bottom:14px;">{escape(eyebrow)}</div>
+          <h1 style="margin:0;font-size:42px;line-height:0.95;color:#ffffff;">{escape(title)}</h1>
         </div>
-        <div style="padding:28px 32px 32px;font-size:17px;line-height:1.65;">
+        <div style="padding:28px 32px 32px;font-size:17px;line-height:1.65;color:#f3f3f3;">
           <p style="margin:0 0 18px;">{escape(message)}</p>
           {rows}
         </div>
@@ -479,8 +480,23 @@ def _upgrade_verify_success_html(result: dict[str, Any]) -> str:
         eyebrow="Rare Identity",
         title="Email verified",
         message="Your Rare email verification is complete and the agent has been upgraded.",
-        accent="linear-gradient(135deg,#fafafa 0%,#ebebeb 100%)",
+        accent="linear-gradient(135deg,#141414 0%,#232323 100%)",
         detail_rows=[
+            ("Level", str(result.get("level", "-"))),
+            ("Status", str(result.get("status", "-"))),
+            ("Processed", _human_time(int(datetime.now(UTC).timestamp()))),
+        ],
+    )
+
+
+def _social_upgrade_success_html(*, provider: str, result: dict[str, Any]) -> str:
+    return _status_page_html(
+        eyebrow="Rare Identity",
+        title="Social verification complete",
+        message="Your social account was verified and the Rare agent has been upgraded.",
+        accent="linear-gradient(135deg,#141414 0%,#232323 100%)",
+        detail_rows=[
+            ("Provider", provider),
             ("Level", str(result.get("level", "-"))),
             ("Status", str(result.get("status", "-"))),
             ("Processed", _human_time(int(datetime.now(UTC).timestamp()))),
@@ -495,8 +511,25 @@ def _recovery_verify_success_html(result: dict[str, Any]) -> str:
         eyebrow="Rare Recovery",
         title="Hosted access recovered",
         message="Your hosted management token has been recovered. Store it now before closing this page.",
-        accent="linear-gradient(135deg,#fafafa 0%,#ebebeb 100%)",
+        accent="linear-gradient(135deg,#141414 0%,#232323 100%)",
         detail_rows=[
+            ("Agent", str(result.get("agent_id", "-"))),
+            ("Expires", _human_time(result.get("hosted_management_token_expires_at"))),
+            ("Token", token_display),
+        ],
+    )
+
+
+def _social_recovery_success_html(*, provider: str, result: dict[str, Any]) -> str:
+    token = str(result.get("hosted_management_token") or "")
+    token_display = token if token else "Issued successfully"
+    return _status_page_html(
+        eyebrow="Rare Recovery",
+        title="Social recovery complete",
+        message="Your linked social account was verified and a hosted management token has been recovered.",
+        accent="linear-gradient(135deg,#141414 0%,#232323 100%)",
+        detail_rows=[
+            ("Provider", provider),
             ("Agent", str(result.get("agent_id", "-"))),
             ("Expires", _human_time(result.get("hosted_management_token_expires_at"))),
             ("Token", token_display),
@@ -509,8 +542,15 @@ def _error_status_page_html(*, eyebrow: str, title: str, message: str) -> str:
         eyebrow=eyebrow,
         title=title,
         message=message,
-        accent="linear-gradient(135deg,#f1f1f1 0%,#dfdfdf 100%)",
+        accent="linear-gradient(135deg,#111111 0%,#1b1b1b 100%)",
     )
+
+
+def _request_prefers_html(request: Request) -> bool:
+    accept = request.headers.get("accept", "")
+    if not accept:
+        return False
+    return "text/html" in accept.lower()
 
 
 def create_app(service: RareService | None = None, *, admin_token: str | None = None) -> FastAPI:
@@ -1303,38 +1343,69 @@ def create_app(service: RareService | None = None, *, admin_token: str | None = 
 
     @app.get("/v1/upgrades/l2/social/callback")
     def social_callback_upgrade_l2(
+        request: Request,
         provider: Literal["x", "github", "linkedin"] = Query(...),
         code: str = Query(...),
         state: str = Query(...),
-    ) -> dict:
+    ) -> Any:
         try:
             if rare_service.has_hosted_management_recovery_oauth_state(state=state):
-                return rare_service.complete_hosted_management_recovery_social_callback(
+                result = rare_service.complete_hosted_management_recovery_social_callback(
                     provider=provider,
                     code=code,
                     state=state,
                 )
-            return rare_service.social_callback_upgrade_l2(
+                if _request_prefers_html(request):
+                    return HTMLResponse(content=_social_recovery_success_html(provider=provider, result=result))
+                return result
+            result = rare_service.social_callback_upgrade_l2(
                 provider=provider,
                 code=code,
                 state=state,
             )
+            if _request_prefers_html(request):
+                return HTMLResponse(content=_social_upgrade_success_html(provider=provider, result=result))
+            return result
         except Exception as exc:  # noqa: BLE001
+            if _request_prefers_html(request):
+                status_code, detail = _http_error_status_and_detail(exc)
+                return HTMLResponse(
+                    status_code=status_code,
+                    content=_error_status_page_html(
+                        eyebrow="Rare Identity",
+                        title="Social verification failed",
+                        message=detail,
+                    ),
+                )
             _raise_http(exc)
 
     @app.get("/v1/signer/recovery/social/callback")
     def social_callback_management_recovery(
+        request: Request,
         provider: Literal["x", "github", "linkedin"] = Query(...),
         code: str = Query(...),
         state: str = Query(...),
-    ) -> dict:
+    ) -> Any:
         try:
-            return rare_service.complete_hosted_management_recovery_social_callback(
+            result = rare_service.complete_hosted_management_recovery_social_callback(
                 provider=provider,
                 code=code,
                 state=state,
             )
+            if _request_prefers_html(request):
+                return HTMLResponse(content=_social_recovery_success_html(provider=provider, result=result))
+            return result
         except Exception as exc:  # noqa: BLE001
+            if _request_prefers_html(request):
+                status_code, detail = _http_error_status_and_detail(exc)
+                return HTMLResponse(
+                    status_code=status_code,
+                    content=_error_status_page_html(
+                        eyebrow="Rare Recovery",
+                        title="Social recovery failed",
+                        message=detail,
+                    ),
+                )
             _raise_http(exc)
 
     @app.post("/v1/upgrades/l2/social/complete")

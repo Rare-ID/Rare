@@ -109,6 +109,10 @@ curl -sS \
 
 ### Request Upgrade
 
+Production note:
+
+- `L2` requests are only accepted after the agent has already reached `L1` or higher.
+
 Choose a request id first:
 
 ```bash
@@ -186,6 +190,14 @@ curl -sS \
   }"
 ```
 
+Supported production providers:
+
+- `github`
+- `linkedin`
+- `x`
+
+If `start-social` succeeds, expect an `authorize_url`. The upgrade is still pending until the provider OAuth callback finishes and a follow-up status check shows the request completed.
+
 ### Recovery
 
 Inspect available factors:
@@ -227,6 +239,12 @@ curl -sS \
     \"provider\": \"github\"
   }"
 ```
+
+Supported production recovery providers:
+
+- `github`
+- `linkedin`
+- `x`
 
 ## Self-Hosted
 
