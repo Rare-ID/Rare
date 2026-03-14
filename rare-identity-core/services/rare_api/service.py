@@ -111,7 +111,7 @@ class HostedSessionRecord:
     session_pubkey: str
     agent_id: str
     aud: str
-    private_key: Ed25519PrivateKey
+    private_key: str
     created_at: int
     expires_at: int
 
@@ -568,7 +568,7 @@ class RareService:
                     "agent_id": item.agent_id,
                     "aud": item.aud,
                     "private_key_ciphertext": self.hosted_key_cipher.encrypt_text(
-                        self._private_key_to_b64(item.private_key)
+                        item.private_key
                     ),
                     "created_at": item.created_at,
                     "expires_at": item.expires_at,
@@ -677,9 +677,7 @@ class RareService:
                     session_pubkey=value["session_pubkey"],
                     agent_id=value["agent_id"],
                     aud=value["aud"],
-                    private_key=load_private_key(
-                        self.hosted_key_cipher.decrypt_text(value["private_key_ciphertext"])
-                    ),
+                    private_key=self.hosted_key_cipher.decrypt_text(value["private_key_ciphertext"]),
                     created_at=value["created_at"],
                     expires_at=value["expires_at"],
                 ),
@@ -2063,15 +2061,13 @@ class RareService:
         )
 
         session_private_b64, session_pubkey = generate_ed25519_keypair()
-        session_private_key = load_private_key(session_private_b64)
-
         sign_input = build_auth_challenge_payload(
             aud=aud,
             nonce=nonce,
             issued_at=issued_at,
             expires_at=expires_at,
         )
-        signature = sign_detached(sign_input, session_private_key)
+        signature = sign_detached(sign_input, load_private_key(session_private_b64))
 
         delegation = self._issue_rare_delegation_token(
             agent_id=agent_id,
@@ -2089,7 +2085,7 @@ class RareService:
                 session_pubkey=session_pubkey,
                 agent_id=agent_id,
                 aud=aud,
-                private_key=session_private_key,
+                private_key=session_private_b64,
                 created_at=now,
                 expires_at=session_exp,
             ),
@@ -2166,7 +2162,7 @@ class RareService:
             issued_at=issued_at,
             expires_at=expires_at,
         )
-        signature = sign_detached(sign_input, session.private_key)
+        signature = sign_detached(sign_input, load_private_key(session.private_key))
 
         result = {
             "agent_id": agent_id,

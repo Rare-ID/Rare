@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import builtins
+import pickle
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
@@ -459,6 +460,7 @@ def test_set_name_rejects_forged_signature(env: dict) -> None:
 
 def test_prepare_auth_and_sign_action_with_hosted_session_key(env: dict) -> None:
     client = env["client"]
+    service = env["service"]
     agent = register_agent(client, "actor")
 
     challenge = {
@@ -483,6 +485,9 @@ def test_prepare_auth_and_sign_action_with_hosted_session_key(env: dict) -> None
     )
     assert prepared.status_code == 200
     proof = prepared.json()
+    session = service.hosted_session_keys.get(proof["session_pubkey"])
+    assert session is not None
+    pickle.dumps(session, protocol=pickle.HIGHEST_PROTOCOL)
 
     sign_action = client.post(
         "/v1/signer/sign_action",
