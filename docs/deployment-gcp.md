@@ -2,7 +2,7 @@
 
 This workspace now includes the deployment assets for the Rare Core API external beta:
 
-- `rare-identity-core/Dockerfile`: production image build for Cloud Run
+- `services/rare-identity-core/Dockerfile`: production image build for Cloud Run
 - `infra/gcp/terraform/`: GCP infrastructure for Cloud Run, Cloud SQL, Redis, Secret Manager, KMS, and HTTPS load balancing
 - `.github/workflows/deploy-rare-core.yml`: image build and Cloud Run deploy workflow
 

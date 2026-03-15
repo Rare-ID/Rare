@@ -5,8 +5,8 @@ on:
     branches:
       - main
     paths:
-      - "rare-identity-protocol-python/**"
-      - "rare-agent-sdk-python/**"
+      - "packages/python/rare-identity-protocol-python/**"
+      - "packages/python/rare-agent-sdk-python/**"
       - ".github/workflows/publish-python-packages.yml"
   workflow_dispatch:
     inputs:
@@ -43,13 +43,13 @@ jobs:
       matrix:
         package:
           - name: rare-identity-protocol
-            path: rare-identity-protocol-python
+            path: packages/python/rare-identity-protocol-python
           - name: rare-identity-verifier
-            path: rare-identity-verifier-python
+            path: packages/python/rare-identity-verifier-python
           - name: rare-identity-core
-            path: rare-identity-core
+            path: services/rare-identity-core
           - name: rare-agent-sdk
-            path: rare-agent-sdk-python
+            path: packages/python/rare-agent-sdk-python
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6

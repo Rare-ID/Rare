@@ -13,7 +13,7 @@
 
 不适合开源：
 
-- `rare-identity-core/services/rare_api/**`
+- `services/rare-identity-core/services/rare_api/**`
 - 托管 signer、生产 wiring、Secret Manager/KMS/SendGrid/GitHub OAuth 的服务端实现细节
 - `infra/gcp/**`
 - `.github/workflows/deploy-rare-core.yml`
@@ -129,9 +129,9 @@
 - workflow: `.github/workflows/sync-public-oss.yml`
 - script: `scripts/sync_public_repos.sh`
 - public repo templates:
-  - `public-oss/rare-protocol-py/**`
-  - `public-oss/rare-agent-python/**`
-  - `public-oss/rare-platform-ts/**`
+  - `open-source/public-oss/rare-protocol-py/**`
+  - `open-source/public-oss/rare-agent-python/**`
+  - `open-source/public-oss/rare-platform-ts/**`
 
 需要的 GitHub secret：
 
@@ -181,23 +181,23 @@
 
 ### Move To `Rare-ID/rare-protocol-py`
 
-- `rare-identity-protocol-python/**`
-- `rare-identity-verifier-python/**`
-- `rare-identity-core/docs/**` 中与 RIP / protocol / verifier 直接相关的公开文档
+- `packages/python/rare-identity-protocol-python/**`
+- `packages/python/rare-identity-verifier-python/**`
+- `services/rare-identity-core/docs/**` 中与 RIP / protocol / verifier 直接相关的公开文档
 
 ### Move To `Rare-ID/rare-agent-python`
 
-- `rare-agent-sdk-python/**`
+- `packages/python/rare-agent-sdk-python/**`
 - `skills/rare-agent/` 的公开 skill 内容与 public mirror
 
 ### Move To `Rare-ID/rare-platform-ts`
 
-- `rare-platform-kit-ts/**`
+- `packages/ts/rare-platform-kit-ts/**`
 - `FOR_PLATFORM.md` 的公开接入部分
 
 ### Keep Private
 
-- `rare-identity-core/**`
+- `services/rare-identity-core/**`
 - `infra/**`
 - `docs/deployment-gcp.md`
 - `docs/ops-inventory.md`

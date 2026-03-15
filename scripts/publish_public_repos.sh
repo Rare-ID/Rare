@@ -15,9 +15,9 @@ trap cleanup EXIT
 
 repo_source_dir() {
   case "$1" in
-    "Rare-Identity-Core") echo "rare-identity-core" ;;
-    "Rare-Agent-SDK-Python") echo "rare-agent-sdk-python" ;;
-    "Rare-Platform-Kit-TS") echo "rare-platform-kit-ts" ;;
+    "Rare-Identity-Core") echo "services/rare-identity-core" ;;
+    "Rare-Agent-SDK-Python") echo "packages/python/rare-agent-sdk-python" ;;
+    "Rare-Platform-Kit-TS") echo "packages/ts/rare-platform-kit-ts" ;;
     *)
       echo "unknown repo: $1" >&2
       exit 1

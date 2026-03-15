@@ -9,7 +9,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-DOCS_DIR = Path("rare-identity-core/docs")
+DOCS_DIR = Path("services/rare-identity-core/docs")
 INDEX_FILE = DOCS_DIR / "RIP_INDEX.md"
 
 RE_NUMBERED = re.compile(r"^rip-(\d{4})-[a-z0-9-]+\.md$")

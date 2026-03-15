@@ -11,12 +11,11 @@ from fastapi import FastAPI
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-RARE_SERVICES_DIR = REPO_ROOT / "rare-identity-core" / "services"
-RARE_LIBS_DIR = REPO_ROOT / "rare-identity-core" / "libs"
-PLATFORM_STUB_DIR = REPO_ROOT / "rare-agent-sdk-python" / "tests"
+RARE_SERVICES_DIR = REPO_ROOT / "services" / "rare-identity-core" / "services"
+PLATFORM_STUB_DIR = REPO_ROOT / "packages" / "python" / "rare-agent-sdk-python" / "tests"
 RUNTIME_DIR = REPO_ROOT / ".tmp-run" / "local-stack"
 
-for candidate in (RARE_SERVICES_DIR, RARE_LIBS_DIR, PLATFORM_STUB_DIR):
+for candidate in (RARE_SERVICES_DIR, PLATFORM_STUB_DIR):
     candidate_str = str(candidate)
     if candidate_str not in sys.path:
         sys.path.insert(0, candidate_str)

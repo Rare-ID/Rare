@@ -31,5 +31,5 @@ No new attack surface is introduced.
 This file itself is the example artifact.
 
 ## Reference Implementation
-- `rare-identity-core/docs/RIP_TEMPLATE.md`
+- `services/rare-identity-core/docs/RIP_TEMPLATE.md`
 - `scripts/validate_rip_docs.py`

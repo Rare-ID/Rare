@@ -38,28 +38,28 @@ Rare 是一个面向 AI Agent 的身份与信任基础设施，目标是让 Agen
 python3.11 -m venv .venv
 source .venv/bin/activate
 python -m pip install -U pip setuptools wheel
-pip install -r ./rare-identity-protocol-python/requirements-test.lock
-pip install -r ./rare-identity-verifier-python/requirements-test.lock
-pip install -e "./rare-identity-protocol-python[test]"
-pip install -e "./rare-identity-verifier-python[test]"
-pip install -r ./rare-identity-core/requirements-test.lock
-pip install -r ./rare-agent-sdk-python/requirements-test.lock
-pip install -e "./rare-identity-core[test]"
-pip install -e "./rare-agent-sdk-python[test]"
+pip install -r ./packages/python/rare-identity-protocol-python/requirements-test.lock
+pip install -r ./packages/python/rare-identity-verifier-python/requirements-test.lock
+pip install -e "./packages/python/rare-identity-protocol-python[test]"
+pip install -e "./packages/python/rare-identity-verifier-python[test]"
+pip install -r ./services/rare-identity-core/requirements-test.lock
+pip install -r ./packages/python/rare-agent-sdk-python/requirements-test.lock
+pip install -e "./services/rare-identity-core[test]"
+pip install -e "./packages/python/rare-agent-sdk-python[test]"
 ```
 
 生产/CI 可复现安装（锁定依赖版本）：
 
 ```bash
 ./scripts/lock_deps.sh
-pip install -r rare-identity-protocol-python/requirements-test.lock
-pip install -r rare-identity-verifier-python/requirements-test.lock
-pip install -e "./rare-identity-protocol-python[test]" --no-deps
-pip install -e "./rare-identity-verifier-python[test]" --no-deps
-pip install -r rare-identity-core/requirements-test.lock
-pip install -r rare-agent-sdk-python/requirements-test.lock
-pip install -e "./rare-identity-core[test]" --no-deps
-pip install -e "./rare-agent-sdk-python[test]" --no-deps
+pip install -r packages/python/rare-identity-protocol-python/requirements-test.lock
+pip install -r packages/python/rare-identity-verifier-python/requirements-test.lock
+pip install -e "./packages/python/rare-identity-protocol-python[test]" --no-deps
+pip install -e "./packages/python/rare-identity-verifier-python[test]" --no-deps
+pip install -r services/rare-identity-core/requirements-test.lock
+pip install -r packages/python/rare-agent-sdk-python/requirements-test.lock
+pip install -e "./services/rare-identity-core[test]" --no-deps
+pip install -e "./packages/python/rare-agent-sdk-python[test]" --no-deps
 ```
 
 ### 2) 启动服务
@@ -67,11 +67,11 @@ pip install -e "./rare-agent-sdk-python[test]" --no-deps
 仅启动 Rare Core API：
 
 ```bash
-cd rare-identity-core
+cd services/rare-identity-core
 uvicorn rare_api.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-TypeScript 平台 SDK 在 `rare-platform-kit-ts` 内独立构建与测试（`pnpm -r build && pnpm -r test`）。
+TypeScript 平台 SDK 在 `packages/ts/rare-platform-kit-ts` 内独立构建与测试（`pnpm -r build && pnpm -r test`）。
 
 ### 3) 运行测试
 
@@ -84,17 +84,17 @@ TypeScript 平台 SDK 在 `rare-platform-kit-ts` 内独立构建与测试（`pnp
 分仓测试：
 
 ```bash
-(cd rare-identity-protocol-python && pytest -q)
-(cd rare-identity-verifier-python && pytest -q)
-(cd rare-identity-core && pytest -q)
-(cd rare-agent-sdk-python && pytest -q)
-(cd rare-platform-kit-ts && pnpm -r test)
+(cd packages/python/rare-identity-protocol-python && pytest -q)
+(cd packages/python/rare-identity-verifier-python && pytest -q)
+(cd services/rare-identity-core && pytest -q)
+(cd packages/python/rare-agent-sdk-python && pytest -q)
+(cd packages/ts/rare-platform-kit-ts && pnpm -r test)
 ```
 
 按关键用例快速回归：
 
 ```bash
-(cd rare-identity-core && pytest -q tests/test_core.py -k "set_name or nonce")
+(cd services/rare-identity-core && pytest -q tests/test_core.py -k "set_name or nonce")
 ```
 
 ### 4) 构建与产物检查
@@ -103,24 +103,24 @@ TypeScript 平台 SDK 在 `rare-platform-kit-ts` 内独立构建与测试（`pnp
 
 ```bash
 pip install build
-(cd rare-identity-protocol-python && python -m build)
-(cd rare-identity-verifier-python && python -m build)
-(cd rare-identity-core && python -m build)
-(cd rare-agent-sdk-python && python -m build)
-(cd rare-platform-kit-ts && pnpm -r build)
+(cd packages/python/rare-identity-protocol-python && python -m build)
+(cd packages/python/rare-identity-verifier-python && python -m build)
+(cd services/rare-identity-core && python -m build)
+(cd packages/python/rare-agent-sdk-python && python -m build)
+(cd packages/ts/rare-platform-kit-ts && pnpm -r build)
 ```
 
 语法/导入级检查（无额外依赖）：
 
 ```bash
-python -m compileall rare-identity-protocol-python rare-identity-verifier-python rare-identity-core rare-agent-sdk-python
+python -m compileall packages/python/rare-identity-protocol-python packages/python/rare-identity-verifier-python services/rare-identity-core packages/python/rare-agent-sdk-python
 ```
 
 可选静态检查（建议在 CI 中启用）：
 
 ```bash
 pip install ruff
-ruff check rare-identity-protocol-python rare-identity-verifier-python rare-identity-core rare-agent-sdk-python
+ruff check packages/python/rare-identity-protocol-python packages/python/rare-identity-verifier-python services/rare-identity-core packages/python/rare-agent-sdk-python
 ```
 
 依赖锁定与审计（建议发布前执行）：
@@ -133,7 +133,7 @@ ruff check rare-identity-protocol-python rare-identity-verifier-python rare-iden
 ### 5) SDK/CLI 常用命令
 
 ```bash
-cd rare-agent-sdk-python
+cd packages/python/rare-agent-sdk-python
 rare register --name alice
 rare request-upgrade --level L1 --email alice@example.com
 rare request-upgrade --level L2
@@ -152,21 +152,21 @@ rare show-state
 
 ```text
 .
-├── rare-identity-protocol-python/       # 协议共享包: challenge、token、crypto、name_policy
-├── rare-identity-verifier-python/       # verifier 共享包: identity/delegation 校验
-├── rare-identity-core/                  # 身份核心仓
+├── packages/python/rare-identity-protocol-python/       # 协议共享包: challenge、token、crypto、name_policy
+├── packages/python/rare-identity-verifier-python/       # verifier 共享包: identity/delegation 校验
+├── services/rare-identity-core/                  # 身份核心仓
 │   ├── services/rare_api/               # Rare API: self_register / set_name / refresh / signer
 │   ├── docs/                            # RIP 规范草案
 │   └── tests/                           # Core 单元与接口测试
-├── rare-agent-sdk-python/                     # Agent SDK + CLI
+├── packages/python/rare-agent-sdk-python/                     # Agent SDK + CLI
 │   ├── src/rare_agent_sdk/                    # AgentClient、状态管理、CLI
 │   └── tests/                           # SDK 与 CLI 测试
-├── rare-platform-kit-ts/                # TypeScript 平台适配 SDK（Rare Platform Kit）
+├── packages/ts/rare-platform-kit-ts/                # TypeScript 平台适配 SDK（Rare Platform Kit）
 │   ├── packages/platform-kit-core/      # 协议校验与签名串构造
 │   ├── packages/platform-kit-web/       # Web 标准适配与登录编排
 │   ├── packages/platform-kit-client/    # Rare API typed client
 │   └── packages/platform-kit-redis/     # Redis 存储适配
-├── public-oss/                          # 公开仓 README / CI / publish workflow 模板
+├── open-source/                          # 公开仓 README / CI / publish workflow 模板
 ├── out/public-repos/                    # 同步/拆分脚本生成的临时镜像，可删除后重建
 ├── scripts/test_all.sh                  # 工作区测试入口
 └── docs/                                # 根文档（用户流程、平台接入流程）
@@ -174,7 +174,7 @@ rare show-state
 
 补充说明：
 
-- `out/` 不是源码目录，而是 `scripts/split_repos.sh`、`scripts/verify_split_repos.sh`、`scripts/publish_public_repos.sh` 等脚本使用的生成产物目录
+- `out/` 不是源码目录，而是 `scripts/legacy/split_repos.sh`、`scripts/legacy/verify_split_repos.sh`、`scripts/publish_public_repos.sh` 等脚本使用的生成产物目录
 - `out/` 可以安全删除；需要时脚本会重新生成
 - 正式发布流程以 [docs/release-sop.md](/Volumes/ST7/Projects/Rare/docs/release-sop.md) 为准
 - 运维现状、GCP、Cloudflare、GitHub secrets 以 [docs/ops-inventory.md](/Volumes/ST7/Projects/Rare/docs/ops-inventory.md) 为准
@@ -217,7 +217,7 @@ rare show-state
 ### 安全红线
 
 - ⚠️ 禁止提交私钥、会话 token、SDK 本地状态文件中的敏感字段
-- ⚠️ 非必要不要改动签名 payload 格式；一旦改动必须同步更新 `rare-identity-core/docs/RIP` 与跨仓测试
+- ⚠️ 非必要不要改动签名 payload 格式；一旦改动必须同步更新 `services/rare-identity-core/docs/RIP` 与跨仓测试
 
 ---
 
@@ -248,10 +248,10 @@ rare show-state
 
 ```bash
 pip install pytest-cov
-(cd rare-identity-protocol-python && pytest -q tests --cov=src/rare_identity_protocol --cov-report=term-missing)
-(cd rare-identity-verifier-python && pytest -q tests --cov=src/rare_identity_verifier --cov-report=term-missing)
-(cd rare-identity-core && pytest -q tests/test_core.py --cov=services/rare_api --cov-report=term-missing)
-(cd rare-agent-sdk-python && pytest -q --cov=src/rare_agent_sdk --cov-report=term-missing)
+(cd packages/python/rare-identity-protocol-python && pytest -q tests --cov=src/rare_identity_protocol --cov-report=term-missing)
+(cd packages/python/rare-identity-verifier-python && pytest -q tests --cov=src/rare_identity_verifier --cov-report=term-missing)
+(cd services/rare-identity-core && pytest -q tests/test_core.py --cov=services/rare_api --cov-report=term-missing)
+(cd packages/python/rare-agent-sdk-python && pytest -q --cov=src/rare_agent_sdk --cov-report=term-missing)
 ```
 
 ---

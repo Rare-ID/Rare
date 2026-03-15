@@ -34,8 +34,8 @@ All normative RIP process rules are defined in this document. Supporting files s
 RIP documents MUST be written in English, including metadata values, section headings, and normative text. External discussion links may point to content in any language.
 
 ### File naming and location
-- Numbered RIPs MUST live in `rare-identity-core/docs` and match `rip-XXXX-slug.md`.
-- Draft RIPs MUST live in `rare-identity-core/docs/drafts` and match `rip-draft-slug.md`.
+- Numbered RIPs MUST live in `services/rare-identity-core/docs` and match `rip-XXXX-slug.md`.
+- Draft RIPs MUST live in `services/rare-identity-core/docs/drafts` and match `rip-draft-slug.md`.
 - `XXXX` is a four digit zero-padded identifier.
 
 ### Required metadata block
@@ -131,8 +131,8 @@ Discussion: https://github.com/rare-project/rare/issues/123
 ```
 
 ## Reference Implementation
-- `rare-identity-core/docs/RIP_TEMPLATE.md`
-- `rare-identity-core/docs/CONTRIBUTING_RIP.md`
-- `rare-identity-core/docs/RIP_INDEX.md`
+- `services/rare-identity-core/docs/RIP_TEMPLATE.md`
+- `services/rare-identity-core/docs/CONTRIBUTING_RIP.md`
+- `services/rare-identity-core/docs/RIP_INDEX.md`
 - `scripts/validate_rip_docs.py`
 - `.github/workflows/tests.yml`

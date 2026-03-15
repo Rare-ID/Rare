@@ -6,8 +6,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(ROOT / "rare-identity-protocol-python" / "src"))
-sys.path.insert(0, str(ROOT / "rare-identity-verifier-python" / "src"))
+sys.path.insert(0, str(ROOT / "packages" / "python" / "rare-identity-protocol-python" / "src"))
+sys.path.insert(0, str(ROOT / "packages" / "python" / "rare-identity-verifier-python" / "src"))
 
 from rare_identity_protocol import (  # noqa: E402
     build_action_payload,

@@ -3,11 +3,11 @@ name: platform-kit-ts
 on:
   push:
     paths:
-      - "rare-platform-kit-ts/**"
+      - "packages/ts/rare-platform-kit-ts/**"
       - ".github/workflows/platform-kit-ts.yml"
   pull_request:
     paths:
-      - "rare-platform-kit-ts/**"
+      - "packages/ts/rare-platform-kit-ts/**"
       - ".github/workflows/platform-kit-ts.yml"
 
 jobs:
@@ -18,7 +18,7 @@ jobs:
         node-version: [20, 22]
     defaults:
       run:
-        working-directory: rare-platform-kit-ts
+        working-directory: packages/ts/rare-platform-kit-ts
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v4
@@ -44,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: rare-platform-kit-ts
+        working-directory: packages/ts/rare-platform-kit-ts
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v4

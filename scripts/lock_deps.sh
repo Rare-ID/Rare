@@ -25,8 +25,8 @@ cleanup() {
 trap cleanup EXIT
 
 for repo in \
-  rare-identity-protocol-python \
-  rare-identity-verifier-python
+  packages/python/rare-identity-protocol-python \
+  packages/python/rare-identity-verifier-python
 do
   (
     cd "$repo"
@@ -35,10 +35,10 @@ do
 done
 
 for repo in \
-  rare-identity-protocol-python \
-  rare-identity-verifier-python \
-  rare-identity-core \
-  rare-agent-sdk-python
+  packages/python/rare-identity-protocol-python \
+  packages/python/rare-identity-verifier-python \
+  services/rare-identity-core \
+  packages/python/rare-agent-sdk-python
 do
   (
     cd "$repo"
@@ -56,14 +56,14 @@ INTERNAL_PACKAGES = {
     "rare-identity-verifier",
 }
 LOCK_FILES = [
-    ROOT / "rare-identity-protocol-python" / "requirements.lock",
-    ROOT / "rare-identity-protocol-python" / "requirements-test.lock",
-    ROOT / "rare-identity-verifier-python" / "requirements.lock",
-    ROOT / "rare-identity-verifier-python" / "requirements-test.lock",
-    ROOT / "rare-identity-core" / "requirements.lock",
-    ROOT / "rare-identity-core" / "requirements-test.lock",
-    ROOT / "rare-agent-sdk-python" / "requirements.lock",
-    ROOT / "rare-agent-sdk-python" / "requirements-test.lock",
+    ROOT / "packages/python/rare-identity-protocol-python" / "requirements.lock",
+    ROOT / "packages/python/rare-identity-protocol-python" / "requirements-test.lock",
+    ROOT / "packages/python/rare-identity-verifier-python" / "requirements.lock",
+    ROOT / "packages/python/rare-identity-verifier-python" / "requirements-test.lock",
+    ROOT / "services/rare-identity-core" / "requirements.lock",
+    ROOT / "services/rare-identity-core" / "requirements-test.lock",
+    ROOT / "packages/python/rare-agent-sdk-python" / "requirements.lock",
+    ROOT / "packages/python/rare-agent-sdk-python" / "requirements-test.lock",
 ]
 
 

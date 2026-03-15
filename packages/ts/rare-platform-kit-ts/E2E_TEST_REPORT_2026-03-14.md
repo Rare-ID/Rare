@@ -469,8 +469,8 @@ Fix implemented locally:
 
 Relevant files:
 
-- [service.py](/Volumes/ST7/Projects/Rare/rare-identity-core/services/rare_api/service.py)
-- [test_core.py](/Volumes/ST7/Projects/Rare/rare-identity-core/tests/test_core.py)
+- [service.py](/Volumes/ST7/Projects/Rare/services/rare-identity-core/services/rare_api/service.py)
+- [test_core.py](/Volumes/ST7/Projects/Rare/services/rare-identity-core/tests/test_core.py)
 
 ## Final Status
 

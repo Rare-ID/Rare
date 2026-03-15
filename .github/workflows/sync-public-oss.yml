@@ -5,13 +5,13 @@ on:
     branches:
       - main
     paths:
-      - "public-oss/**"
+      - "open-source/**"
       - "docs/open-source-overview.md"
-      - "rare-identity-protocol-python/**"
-      - "rare-identity-verifier-python/**"
-      - "rare-agent-sdk-python/**"
-      - "rare-platform-kit-ts/**"
-      - "rare-identity-core/docs/**"
+      - "packages/python/rare-identity-protocol-python/**"
+      - "packages/python/rare-identity-verifier-python/**"
+      - "packages/python/rare-agent-sdk-python/**"
+      - "packages/ts/rare-platform-kit-ts/**"
+      - "services/rare-identity-core/docs/**"
       - "scripts/sync_public_repos.sh"
       - ".github/workflows/sync-public-oss.yml"
   workflow_dispatch:

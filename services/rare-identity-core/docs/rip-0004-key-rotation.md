@@ -63,6 +63,6 @@ Example key entry:
 ```
 
 ## Reference Implementation
-- `rare-identity-core/services/rare_api/main.py`
-- `rare-identity-core/services/rare_api/service.py`
-- `rare-identity-core/tests/test_core.py`
+- `services/rare-identity-core/services/rare_api/main.py`
+- `services/rare-identity-core/services/rare_api/service.py`
+- `services/rare-identity-core/tests/test_core.py`

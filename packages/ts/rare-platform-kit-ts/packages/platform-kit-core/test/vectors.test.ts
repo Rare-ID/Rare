@@ -23,6 +23,7 @@ describe("RIP vectors", () => {
       "..",
       "..",
       "..",
+      "services",
       "rare-identity-core",
       "docs",
       "test-vectors",

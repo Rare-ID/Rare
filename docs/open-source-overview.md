@@ -80,4 +80,4 @@ Current versions are still pre-`1.0`. Public API and protocol-facing changes sho
 
 ## Notes
 
-This document is the source draft for the public entrypoint template at `public-oss/Rare/README.md`.
+This document is the source draft for the public entrypoint template at `open-source/public-oss/Rare/README.md`.

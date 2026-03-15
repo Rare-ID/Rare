@@ -15,7 +15,7 @@ on:
     branches:
       - main
     paths:
-      - "rare-identity-core/**"
+      - "services/rare-identity-core/**"
       - ".github/workflows/deploy-rare-core.yml"
 
 jobs:
@@ -53,7 +53,7 @@ jobs:
         env:
           IMAGE_URI: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPOSITORY }}/rare-core-api:${{ github.sha }}
         run: |
-          docker build -f rare-identity-core/Dockerfile -t "${IMAGE_URI}" .
+          docker build -f services/rare-identity-core/Dockerfile -t "${IMAGE_URI}" .
           docker push "${IMAGE_URI}"
           echo "IMAGE_URI=${IMAGE_URI}" >> "$GITHUB_ENV"
 

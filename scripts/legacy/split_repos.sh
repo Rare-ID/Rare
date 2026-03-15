@@ -17,8 +17,8 @@ sync_snapshot() {
   echo "created ${target_dir}"
 }
 
-sync_snapshot "Rare-Identity-Core" "rare-identity-core"
-sync_snapshot "Rare-Agent-SDK-Python" "rare-agent-sdk-python"
-sync_snapshot "Rare-Platform-Kit-TS" "rare-platform-kit-ts"
+sync_snapshot "Rare-Identity-Core" "services/rare-identity-core"
+sync_snapshot "Rare-Agent-SDK-Python" "packages/python/rare-agent-sdk-python"
+sync_snapshot "Rare-Platform-Kit-TS" "packages/ts/rare-platform-kit-ts"
 
 echo "split completed under ${OUT_DIR}"

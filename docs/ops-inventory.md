@@ -14,16 +14,16 @@
 
 ## Repository Layout
 
-- `rare-identity-core/`
+- `services/rare-identity-core/`
   - Rare Core API 服务代码
-  - 关键部署文件：`rare-identity-core/Dockerfile`
-- `rare-identity-protocol-python/`
+  - 关键部署文件：`services/rare-identity-core/Dockerfile`
+- `packages/python/rare-identity-protocol-python/`
   - Python 协议包
-- `rare-identity-verifier-python/`
+- `packages/python/rare-identity-verifier-python/`
   - Python verifier 包
-- `rare-agent-sdk-python/`
+- `packages/python/rare-agent-sdk-python/`
   - Python Agent SDK 与 CLI
-- `rare-platform-kit-ts/`
+- `packages/ts/rare-platform-kit-ts/`
   - TypeScript 平台 SDK monorepo
 - `infra/gcp/terraform/`
   - GCP Terraform 资产
@@ -35,7 +35,7 @@
   - 公开仓/私有仓拆分建议
 - `docs/release-sop.md`
   - 正式发布 SOP
-- `public-oss/`
+- `open-source/`
   - 公开仓 README / CI / release workflow 模板
 - `skills/rare-agent/`
   - Rare Agent canonical skill（curl-first）
@@ -49,19 +49,19 @@
 - `.github/workflows/platform-kit-ts.yml`
   - TypeScript build/test
 - `.github/workflows/deploy-rare-core.yml`
-  - `main` 分支更新 `rare-identity-core/**` 后自动部署到 `staging`
+  - `main` 分支更新 `services/rare-identity-core/**` 后自动部署到 `staging`
   - 支持手动 `workflow_dispatch` 到 `staging` 或 `prod`
 - `.github/workflows/publish-python-packages.yml`
   - 现在支持两种触发方式：
     - 手动发布到 `testpypi` 或 `pypi`
-    - `main` 分支更新 `rare-identity-protocol-python/**` 或 `rare-agent-sdk-python/**` 后自动发布到 PyPI
+    - `main` 分支更新 `packages/python/rare-identity-protocol-python/**` 或 `packages/python/rare-agent-sdk-python/**` 后自动发布到 PyPI
   - 自动发布范围当前只包含：
     - `rare-identity-protocol`
     - `rare-agent-sdk`
 - `.github/workflows/publish-platform-kit-ts.yml`
   - 现在支持两种触发方式：
     - 手动发布
-    - `main` 分支更新 `rare-platform-kit-ts/**` 后自动发布 npm 包
+    - `main` 分支更新 `packages/ts/rare-platform-kit-ts/**` 后自动发布 npm 包
 - `.github/workflows/sync-public-oss.yml`
   - `main` 分支更新公开相关目录后，自动同步到 `Rare-ID` 组织下的公开仓
   - 需要 secret：`OSS_SYNC_TOKEN`

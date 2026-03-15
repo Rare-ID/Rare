@@ -79,14 +79,14 @@ This RIP intentionally drops legacy `typ=rare.identity+jws`. Integrations still 
 - `owner_id` for email-backed L1 identity should use hashed form and avoid storing raw email in persistent claims.
 
 ## Test Vectors/Examples
-- Test vectors: `rare-identity-core/docs/test-vectors/rip-v1-signing-inputs.json`
+- Test vectors: `services/rare-identity-core/docs/test-vectors/rip-v1-signing-inputs.json`
 - Example full token checks:
   - header `typ=rare.identity.full+jws`
   - payload `aud=platform`
   - payload `lvl=L2`
 
 ## Reference Implementation
-- `rare-identity-protocol-python/src/rare_identity_protocol`
-- `rare-identity-verifier-python/src/rare_identity_verifier`
-- `rare-identity-core/services/rare_api/service.py`
-- `rare-identity-core/tests/test_core.py`
+- `packages/python/rare-identity-protocol-python/src/rare_identity_protocol`
+- `packages/python/rare-identity-verifier-python/src/rare_identity_verifier`
+- `services/rare-identity-core/services/rare_api/service.py`
+- `services/rare-identity-core/tests/test_core.py`

@@ -35,10 +35,10 @@
 每次正式发布前都必须先改版本号，否则发布不会产生新版本。
 
 - Python
-  - `rare-identity-protocol-python/pyproject.toml`
-  - `rare-agent-sdk-python/pyproject.toml`
+  - `packages/python/rare-identity-protocol-python/pyproject.toml`
+  - `packages/python/rare-agent-sdk-python/pyproject.toml`
 - TypeScript
-  - `rare-platform-kit-ts/packages/*/package.json`
+  - `packages/ts/rare-platform-kit-ts/packages/*/package.json`
 
 如果只发布某一个公开仓，只改那个仓对应的版本号。
 
@@ -46,7 +46,7 @@
 
 ### 1. Python protocol
 
-- 私有源目录：`rare-identity-protocol-python/`
+- 私有源目录：`packages/python/rare-identity-protocol-python/`
 - 公开仓：`Rare-ID/rare-protocol-py`
 - PyPI 包：
   - `rare-identity-protocol`
@@ -56,7 +56,7 @@
 1. 在私有主仓改版本号和代码
 2. 本地运行：
    - `./scripts/test_all.sh`
-   - `python -m build`（在 `rare-identity-protocol-python/`）
+   - `python -m build`（在 `packages/python/rare-identity-protocol-python/`）
 3. 合并到 `Rare-Sors/Rare main`
 4. 等 `sync-public-oss` 成功
 5. 在 `Rare-ID/rare-protocol-py` 创建 GitHub Release
@@ -64,7 +64,7 @@
 
 ### 2. Python agent SDK
 
-- 私有源目录：`rare-agent-sdk-python/`
+- 私有源目录：`packages/python/rare-agent-sdk-python/`
 - 公开仓：`Rare-ID/rare-agent-python`
 - PyPI 包：
   - `rare-agent-sdk`
@@ -82,7 +82,7 @@
 
 ### 3. TypeScript platform kit
 
-- 私有源目录：`rare-platform-kit-ts/`
+- 私有源目录：`packages/ts/rare-platform-kit-ts/`
 - 公开仓：`Rare-ID/rare-platform-ts`
 - npm 包：
   - `@rare-id/platform-kit-client`
@@ -97,7 +97,7 @@
 
 1. 在私有主仓改相关 `package.json` 版本号和代码
 2. 本地运行：
-   - `(cd rare-platform-kit-ts && pnpm -r build && pnpm -r test)`
+   - `(cd packages/ts/rare-platform-kit-ts && pnpm -r build && pnpm -r test)`
 3. 合并到 `Rare-Sors/Rare main`
 4. 等 `sync-public-oss` 成功
 5. 在 `Rare-ID/rare-platform-ts` 创建 GitHub Release

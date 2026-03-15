@@ -6,7 +6,7 @@ OUT_DIR="${OUT_DIR:-${ROOT_DIR}/out/public-repos}"
 
 if [[ ! -d "${OUT_DIR}" ]]; then
   echo "split output not found: ${OUT_DIR}" >&2
-  echo "run scripts/split_repos.sh first" >&2
+  echo "run scripts/legacy/split_repos.sh first" >&2
   exit 1
 fi
 
@@ -29,7 +29,7 @@ run_python_repo_checks() {
 
 run_ts_repo_checks() {
   (
-    cd "${OUT_DIR}/rare-platform-kit-ts"
+    cd "${OUT_DIR}/Rare-Platform-Kit-TS"
     pnpm install --frozen-lockfile
     pnpm -r build
     pnpm -r lint
@@ -38,13 +38,13 @@ run_ts_repo_checks() {
   )
 }
 
-run_python_repo_checks "rare-identity-protocol-py"
-run_python_repo_checks "rare-agent-sdk-python"
+run_python_repo_checks "Rare-Identity-Core"
+run_python_repo_checks "Rare-Agent-SDK-Python"
 
 if command -v pnpm >/dev/null 2>&1; then
   run_ts_repo_checks
 else
-  echo "pnpm not found; skipped rare-platform-kit-ts verification"
+  echo "pnpm not found; skipped Rare-Platform-Kit-TS verification"
 fi
 
 echo "split repo verification completed"

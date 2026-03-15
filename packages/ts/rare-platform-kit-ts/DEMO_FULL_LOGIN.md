@@ -18,7 +18,7 @@ Assumptions:
 ## 1) Install
 
 ```bash
-cd rare-platform-kit-ts
+cd packages/ts/rare-platform-kit-ts
 pnpm install
 ```
 
@@ -65,7 +65,7 @@ pnpm demo:register:complete
 Run this in a separate terminal:
 
 ```bash
-cd rare-platform-kit-ts
+cd packages/ts/rare-platform-kit-ts
 export RARE_BASE_URL="https://api.rareid.cc"
 export RARE_SIGNER_PUBLIC_KEY_B64="<required for hosted-signer delegation verification>"
 export PLATFORM_ID="platform-demo-local"
