@@ -1,0 +1,22 @@
+{
+  "name": "@rare-id/platform-kit-demo",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "license": "Apache-2.0",
+  "scripts": {
+    "build": "tsup src/server-cli.ts src/register-challenge-cli.ts src/register-complete-cli.ts --format esm",
+    "test": "vitest run",
+    "lint": "biome check src test",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@rare-id/platform-kit-client": "workspace:*",
+    "@rare-id/platform-kit-core": "workspace:*",
+    "@rare-id/platform-kit-web": "workspace:*"
+  },
+  "devDependencies": {
+    "jose": "^6.0.8",
+    "tweetnacl": "^1.0.3"
+  }
+}

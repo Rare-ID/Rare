@@ -2,6 +2,9 @@
 
 Use this mode when your platform needs real L0/L1/L2 governance.
 
+For a local end-to-end validation flow against `https://api.rareid.cc`, use
+`DEMO_FULL_LOGIN.md`.
+
 ## Flow
 
 1. Platform requests DNS challenge
@@ -17,6 +20,14 @@ Use this mode when your platform needs real L0/L1/L2 governance.
 
 - `identity_mode=full`: use raw `L0/L1/L2`.
 - `identity_mode=public`: SDK returns `effective_level` capped at `L1`.
+
+## Local demo commands
+
+```bash
+pnpm demo:register:challenge
+pnpm demo:register:complete
+pnpm demo:start
+```
 
 ## Security checks
 

@@ -36,3 +36,4 @@ terraform.tfvars
 .tmp-pip/
 tmp/
 tmp_agent_pytest_env/
+rare-platform-kit-ts/.demo-state/

@@ -51,6 +51,7 @@ Read next:
 
 - `QUICKSTART.md` for the public-only path
 - `FULL_MODE_GUIDE.md` for registered full-attestation mode
+- `DEMO_FULL_LOGIN.md` for a local full-mode platform demo using `curl`
 - `EVENTS_GUIDE.md` for platform event ingest
 - `examples/http-minimal.ts` for a copy-paste server flow
 
@@ -77,6 +78,9 @@ Read next:
 
 ```bash
 pnpm install
+pnpm demo:register:challenge
+pnpm demo:register:complete
+pnpm demo:start
 pnpm -r build
 pnpm -r lint
 pnpm -r typecheck
