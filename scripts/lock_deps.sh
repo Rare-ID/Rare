@@ -25,8 +25,8 @@ cleanup() {
 trap cleanup EXIT
 
 for repo in \
-  packages/python/rare-identity-protocol-python \
-  packages/python/rare-identity-verifier-python
+  packages/shared/python/rare-identity-protocol-python \
+  packages/shared/python/rare-identity-verifier-python
 do
   (
     cd "$repo"
@@ -35,10 +35,11 @@ do
 done
 
 for repo in \
-  packages/python/rare-identity-protocol-python \
-  packages/python/rare-identity-verifier-python \
+  packages/shared/python/rare-identity-protocol-python \
+  packages/shared/python/rare-identity-verifier-python \
   services/rare-identity-core \
-  packages/python/rare-agent-sdk-python
+  packages/agent/python/rare-agent-sdk-python \
+  packages/platform/python/rare-platform-sdk-python
 do
   (
     cd "$repo"
@@ -56,14 +57,16 @@ INTERNAL_PACKAGES = {
     "rare-identity-verifier",
 }
 LOCK_FILES = [
-    ROOT / "packages/python/rare-identity-protocol-python" / "requirements.lock",
-    ROOT / "packages/python/rare-identity-protocol-python" / "requirements-test.lock",
-    ROOT / "packages/python/rare-identity-verifier-python" / "requirements.lock",
-    ROOT / "packages/python/rare-identity-verifier-python" / "requirements-test.lock",
+    ROOT / "packages/shared/python/rare-identity-protocol-python" / "requirements.lock",
+    ROOT / "packages/shared/python/rare-identity-protocol-python" / "requirements-test.lock",
+    ROOT / "packages/shared/python/rare-identity-verifier-python" / "requirements.lock",
+    ROOT / "packages/shared/python/rare-identity-verifier-python" / "requirements-test.lock",
     ROOT / "services/rare-identity-core" / "requirements.lock",
     ROOT / "services/rare-identity-core" / "requirements-test.lock",
-    ROOT / "packages/python/rare-agent-sdk-python" / "requirements.lock",
-    ROOT / "packages/python/rare-agent-sdk-python" / "requirements-test.lock",
+    ROOT / "packages/agent/python/rare-agent-sdk-python" / "requirements.lock",
+    ROOT / "packages/agent/python/rare-agent-sdk-python" / "requirements-test.lock",
+    ROOT / "packages/platform/python/rare-platform-sdk-python" / "requirements.lock",
+    ROOT / "packages/platform/python/rare-platform-sdk-python" / "requirements-test.lock",
 ]
 
 

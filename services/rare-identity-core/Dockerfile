@@ -11,8 +11,8 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends build-essential ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-COPY packages/python/rare-identity-protocol-python /deps/rare-identity-protocol-python
-COPY packages/python/rare-identity-verifier-python /deps/rare-identity-verifier-python
+COPY packages/shared/python/rare-identity-protocol-python /deps/rare-identity-protocol-python
+COPY packages/shared/python/rare-identity-verifier-python /deps/rare-identity-verifier-python
 COPY services/rare-identity-core/pyproject.toml /app/pyproject.toml
 COPY services/rare-identity-core/README.md /app/README.md
 COPY services/rare-identity-core/services /app/services

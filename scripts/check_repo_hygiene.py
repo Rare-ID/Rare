@@ -68,7 +68,7 @@ BANNED_PATHS = {
     "open-source/public-oss/rare-protocol-py/SECURITY.md",
     "open-source/public-oss/rare-protocol-py/STATUS.md",
     "open-source/public-oss/rare-protocol-py/SUPPORT.md",
-    "packages/ts/rare-platform-kit-ts/E2E_TEST_REPORT_2026-03-14.md",
+    "packages/platform/ts/rare-platform-kit-ts/E2E_TEST_REPORT_2026-03-14.md",
     "scripts/legacy/split_repos.sh",
     "scripts/legacy/verify_split_repos.sh",
     "scripts/publish_public_repos.sh",
@@ -81,9 +81,19 @@ BANNED_PATTERNS = {
     r"Rare-ID/rare-protocol-py": "legacy protocol split-repo reference",
     r"Rare-ID/rare-platform-ts": "legacy platform split-repo reference",
     r"github\.com/rare-project/rare": "legacy placeholder repo URL",
+    r"packages/python/rare-(identity-protocol|identity-verifier|agent-sdk|platform-sdk)-python": "legacy Python package path",
+    r"packages/ts/rare-platform-kit-ts": "legacy TypeScript package path",
     r"Rare-Sors/": "private repo reference",
     r"sync-public-oss": "legacy public sync workflow reference",
     r"open-source/public-oss": "legacy public template reference",
+}
+
+REQUIRED_TRACKED_PATH_PREFIXES = {
+    "packages/shared/python/rare-identity-protocol-python",
+    "packages/shared/python/rare-identity-verifier-python",
+    "packages/agent/python/rare-agent-sdk-python",
+    "packages/platform/python/rare-platform-sdk-python",
+    "packages/platform/ts/rare-platform-kit-ts",
 }
 
 
@@ -111,6 +121,10 @@ def main() -> int:
     failures: list[str] = []
     files = tracked_files()
     tracked_relpaths = {str(path.relative_to(ROOT)) for path in files}
+
+    for prefix in sorted(REQUIRED_TRACKED_PATH_PREFIXES):
+        if not any(relative == prefix or relative.startswith(f"{prefix}/") for relative in tracked_relpaths):
+            failures.append(f"required package path has no tracked files: {prefix}")
 
     for relative in sorted(BANNED_PATHS):
         if relative in tracked_relpaths and (ROOT / relative).exists():

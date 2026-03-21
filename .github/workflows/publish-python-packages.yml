@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - "packages/python/rare-agent-sdk-python/**"
+      - "packages/agent/python/rare-agent-sdk-python/**"
       - ".github/workflows/publish-python-packages.yml"
   workflow_dispatch:
     inputs:
@@ -16,9 +16,11 @@ on:
         type: choice
         options:
           - all
+          - rare-identity-protocol
           - rare-identity-verifier
           - rare-identity-core
           - rare-agent-sdk
+          - rare-platform-sdk
       repository:
         description: "PyPI repository"
         required: true
@@ -40,12 +42,16 @@ jobs:
       max-parallel: 1
       matrix:
         package:
+          - name: rare-identity-protocol
+            path: packages/shared/python/rare-identity-protocol-python
           - name: rare-identity-verifier
-            path: packages/python/rare-identity-verifier-python
+            path: packages/shared/python/rare-identity-verifier-python
           - name: rare-identity-core
             path: services/rare-identity-core
           - name: rare-agent-sdk
-            path: packages/python/rare-agent-sdk-python
+            path: packages/agent/python/rare-agent-sdk-python
+          - name: rare-platform-sdk
+            path: packages/platform/python/rare-platform-sdk-python
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -100,9 +106,11 @@ jobs:
       max-parallel: 1
       matrix:
         package:
+          - name: rare-identity-protocol
           - name: rare-identity-verifier
           - name: rare-identity-core
           - name: rare-agent-sdk
+          - name: rare-platform-sdk
     steps:
       - name: Filter matrix
         id: filter

@@ -2428,12 +2428,13 @@ def test_file_key_provider_keeps_keys_stable_across_service_restarts(tmp_path: P
     assert public_key_to_b64(first.get_rare_signer_public_key()) == public_key_to_b64(second.get_rare_signer_public_key())
 
     identity_key = first.identity_keys[first.active_identity_kid]
+    _, agent_public_b64 = generate_ed25519_keypair()
     token = sign_jws(
         payload={
             "typ": "rare.identity",
             "ver": 1,
             "iss": "rare",
-            "sub": "agent-stable",
+            "sub": agent_public_b64,
             "lvl": "L1",
             "claims": {"profile": {"name": "stable"}},
             "iat": 0,
@@ -2445,7 +2446,7 @@ def test_file_key_provider_keeps_keys_stable_across_service_restarts(tmp_path: P
         typ="rare.identity.public+jws",
     )
     verified = verify_identity_attestation(token, key_resolver=second.get_identity_public_key, current_ts=0)
-    assert verified.payload["sub"] == "agent-stable"
+    assert verified.payload["sub"] == agent_public_b64
 
 
 def test_postgres_redis_store_shares_replay_state_between_instances() -> None:
@@ -3210,12 +3211,13 @@ def test_delegation_verifier_requires_jti(env: dict) -> None:
 def test_verifier_accepts_current_ts_zero_when_token_is_valid(env: dict) -> None:
     service = env["service"]
     signing_key = service.identity_keys[service.active_identity_kid]
+    _, agent_public_b64 = generate_ed25519_keypair()
     token = sign_jws(
         payload={
             "typ": "rare.identity",
             "ver": 1,
             "iss": "rare",
-            "sub": "agent-ts0",
+            "sub": agent_public_b64,
             "lvl": "L0",
             "claims": {"profile": {"name": "ts0"}},
             "iat": 0,

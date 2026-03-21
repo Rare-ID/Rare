@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rare-agent-sdk"
+version = "0.2.1"
+description = "CLI tooling for Rare agent identity flows"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.11"
+dependencies = [
+  "httpx>=0.27.0",
+  "rare-identity-protocol>=0.1.0",
+]
+keywords = ["rare", "agent", "identity", "attestation", "delegation"]
+
+[project.urls]
+Homepage = "https://rareid.cc"
+Repository = "https://github.com/Rare-ID/Rare"
+Documentation = "https://github.com/Rare-ID/Rare/tree/main/packages/agent/python/rare-agent-sdk-python"
+Issues = "https://github.com/Rare-ID/Rare/issues"
+
+[project.scripts]
+rare = "rare_agent_sdk.cli:main"
+rare-signer = "rare_agent_sdk.signer_cli:main"
+
+[project.optional-dependencies]
+test = [
+  "pytest>=8.2.0",
+  "fastapi>=0.115.0",
+  "rare-identity-verifier>=0.1.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["rare_agent_sdk*"]
