@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rare-identity-protocol"
-version = "0.1.0"
+version = "0.1.1"
 description = "Rare identity protocol primitives and signing helpers"
 readme = "README.md"
 license = "Apache-2.0"

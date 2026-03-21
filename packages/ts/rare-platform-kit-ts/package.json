@@ -1,7 +1,7 @@
 {
   "name": "rare-platform-kit-ts",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Rare Platform Kit monorepo for TypeScript third-party platform integration",
   "license": "Apache-2.0",
   "repository": {
