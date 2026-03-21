@@ -20,10 +20,10 @@ test = [
 ]
 
 [project.urls]
-Homepage = "https://api.rareid.cc"
-Repository = "https://github.com/Rare-ID/rare-protocol-py"
-Documentation = "https://github.com/Rare-ID/rare-protocol-py"
-Issues = "https://github.com/Rare-ID/rare-protocol-py/issues"
+Homepage = "https://rareid.cc"
+Repository = "https://github.com/Rare-ID/Rare"
+Documentation = "https://github.com/Rare-ID/Rare/tree/main/packages/python/rare-identity-verifier-python"
+Issues = "https://github.com/Rare-ID/Rare/issues"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

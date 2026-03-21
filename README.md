@@ -1,36 +1,129 @@
-# Rare Workspace (Split Repos)
+<p align="center">
+  <img src="docs/assets/rare-banner.svg" alt="Rare banner" width="900" />
+</p>
 
-Rare 是一个面向 AI Agent 的身份与信任基础设施，核心能力包括：
-- 可验证身份（Identity Attestation）
-- 可治理权限（L0/L1/L2 分层策略）
-- 可追溯行为（Challenge + Delegation + 审计字段）
+[English](README.md) | [简体中文](README.zh-CN.md)
 
-当前仓库已切换为五包工作区（split-repo + shared packages），不再保留旧目录兼容层。
+Rare Protocol, also known as RareID or Rare Identity Protocol, gives AI agents portable identity, trust signaling, and short-lived capability sessions across platforms.
 
-其中 Python 侧的依赖关系现在是：
-- `packages/python/rare-agent-sdk-python` 只依赖 `rare-identity-protocol`
-- `services/rare-identity-core` 依赖 `rare-identity-protocol` 与 `rare-identity-verifier`
-- `packages/python/rare-identity-verifier-python` 依赖 `rare-identity-protocol`
+Main repository: `https://github.com/Rare-ID/Rare`  
+Platform SDK repository: `https://github.com/Rare-ID/rare-platform-ts`  
+Website: `https://rareid.cc`
 
-## Workspace Layout
+## Why Rare
 
-- `services/rare-identity-core/`: Core API 服务（FastAPI + Python）
-- `packages/python/rare-identity-protocol-python/`: 协议层共享包（Python）
-- `packages/python/rare-identity-verifier-python/`: verifier 共享包（Python）
-- `packages/python/rare-agent-sdk-python/`: Agent SDK + CLI（Python）
-- `packages/ts/rare-platform-kit-ts/`: Platform Kit（TypeScript monorepo）
-- `open-source/`: 公开仓 README / workflow / STATUS 模板
-- `out/`: 临时产物与可重建输出目录
-- `scripts/`: 工作区统一测试与依赖脚本
+Most internet identity is built for humans: emails, passwords, and OAuth accounts. Agents need something else. They identify with keys, act with signatures, and need trust and permissions that can travel across products. Rare packages that into a public protocol, a reference service, an Agent CLI, and platform integration kits.
 
-## Public Repo Mapping
+## Core Model
 
-- `packages/python/rare-identity-protocol-python` + `packages/python/rare-identity-verifier-python` + `services/rare-identity-core/docs` -> `Rare-ID/rare-protocol-py`
-- `packages/python/rare-agent-sdk-python` -> `Rare-ID/rare-agent-python`
-- `packages/ts/rare-platform-kit-ts` -> `Rare-ID/rare-platform-ts`
-- `open-source/public-oss/Rare` -> `Rare-ID/Rare`
+- `agent_id` is always the Ed25519 public key.
+- Control is proven with signatures, not bearer identity tokens.
+- Rare trust is expressed through attestations such as `L0`, `L1`, and `L2`.
+- Platforms authenticate delegated session keys, not the long-term identity key directly.
+- Replay protection and fixed signing inputs are protocol requirements, not implementation details.
+
+## What Rare Provides
+
+- Portable agent identity across products and platforms
+- Trust signaling that platforms can use for governance
+- Short-lived capability sessions instead of long-lived shared secrets
+- Public protocol specs, test vectors, and reference implementations
 
 ## Quick Start
+
+### Agent Quick Start
+
+Copy this prompt into your agent:
+
+```text
+Read https://www.rareid.cc/skill.md and follow the instructions to register Rare
+```
+
+If you want your agent to join Rare, start with `https://www.rareid.cc/skill.md`. That page contains the exact instructions your agent should follow.
+
+Rare supports both public Agent operation paths:
+
+- CLI-first guidance: `skills/rare-agent-cli/`
+- curl-first guidance: `skills/rare-agent/`
+
+The supported Agent package interface is the `rare` / `rare-signer` CLI surface. `rare_agent_sdk` Python imports are not a supported public API.
+
+### Platform Quick Start
+
+Install the TypeScript platform packages:
+
+```bash
+pnpm add @rare-id/platform-kit-core @rare-id/platform-kit-client @rare-id/platform-kit-web
+```
+
+Create a minimal Rare platform kit:
+
+```ts
+import { RareApiClient } from "@rare-id/platform-kit-client";
+import {
+  InMemoryChallengeStore,
+  InMemoryReplayStore,
+  InMemorySessionStore,
+  createRarePlatformKit,
+} from "@rare-id/platform-kit-web";
+
+const rareApiClient = new RareApiClient({
+  rareBaseUrl: "https://api.rareid.cc",
+});
+
+const kit = createRarePlatformKit({
+  aud: "platform",
+  rareApiClient,
+  challengeStore: new InMemoryChallengeStore(),
+  replayStore: new InMemoryReplayStore(),
+  sessionStore: new InMemorySessionStore(),
+});
+```
+
+Platform integration documentation starts here:
+
+- `FOR_PLATFORM.md`
+- `packages/ts/rare-platform-kit-ts/README.md`
+
+## Use Cases
+
+- Autonomous AI agents that need cryptographic identity across tools
+- Agent marketplaces where trust and history should travel with the agent
+- API ecosystems that want capability gating based on Rare trust levels
+- Cross-platform governance systems that share abuse and policy signals
+
+## Repository Map
+
+- `packages/python/rare-identity-protocol-python/`: protocol primitives and signing inputs
+- `packages/python/rare-identity-verifier-python/`: Python verification helpers
+- `services/rare-identity-core/`: FastAPI reference implementation of the Rare API
+- `packages/python/rare-agent-sdk-python/`: Agent CLI package and local signer tooling
+- `packages/ts/rare-platform-kit-ts/`: TypeScript platform SDK source tree
+- `docs/rip/`: RIP specifications and protocol vectors
+- `skills/rare-agent/`: curl-first Agent operating skill
+- `skills/rare-agent-cli/`: CLI-first Agent operating skill
+- `scripts/`: test, validation, and release helper scripts
+
+## Documentation
+
+- `FOR_PLATFORM.md`: platform integration guide
+- `docs/rip/RIP_INDEX.md`: protocol index
+- `docs/release-guide.md`: package release workflow
+- `packages/python/rare-agent-sdk-python/README.md`: Agent CLI usage
+- `packages/ts/rare-platform-kit-ts/README.md`: platform SDK guide
+
+## More Links
+
+- Website: `https://rareid.cc`
+- Whitepaper: `https://rareid.cc/whitepaper`
+- Docs: `https://rareid.cc/docs`
+- GitHub org: `https://github.com/Rare-ID`
+- X: `https://x.com/rareaip`
+- Discord: `https://discord.gg/SNWYHS4nfW`
+
+## Local Development
+
+Set up the workspace:
 
 ```bash
 python3.11 -m venv .venv
@@ -46,58 +139,15 @@ pip install -e "./services/rare-identity-core[test]"
 pip install -e "./packages/python/rare-agent-sdk-python[test]"
 ```
 
-## Development Commands
-
-一键回归：
+Run the standard checks:
 
 ```bash
+python scripts/validate_rip_docs.py --strict
+python scripts/check_repo_hygiene.py
 ./scripts/test_all.sh
-```
-
-覆盖率检查：
-
-```bash
-./scripts/test_cov_all.sh
-```
-
-可复现依赖锁定与审计：
-
-```bash
-./scripts/lock_deps.sh
-./scripts/audit_deps.sh
-```
-
-语法级检查：
-
-```bash
 python -m compileall packages/python/rare-identity-protocol-python packages/python/rare-identity-verifier-python services/rare-identity-core packages/python/rare-agent-sdk-python
 ```
 
-## Document Index
+## Contributing
 
-- `Rare.md`: 总览与术语
-- `skills/rare-agent/SKILL.md`: canonical Rare agent skill（curl-first）
-- `FOR_PLATFORM.md`: Minimal guide for platform integration (auth, action verification, onboarding, event ingest)
-- `docs/deployment-gcp.md`: GCP external beta deployment assets and runtime contract
-- `docs/sdk-release.md`: Python SDK / TypeScript Platform Kit release guide
-- `docs/release-sop.md`: 正式发布 SOP（私有主仓 -> 公开仓 -> PyPI/npm）
-- `services/rare-identity-core/docs/RIP_INDEX.md`: RIP 文档导航
-- `packages/python/rare-identity-protocol-python/README.md`: Python 协议包说明
-- `packages/python/rare-identity-verifier-python/README.md`: Python verifier 包说明
-- `services/rare-identity-core/docs/rip-0001-identity-attestation.md`: 身份声明规范
-- `services/rare-identity-core/docs/rip-0002-delegation.md`: Delegation 规范
-- `services/rare-identity-core/docs/rip-0003-challenge-auth.md`: Challenge 认证规范
-- `services/rare-identity-core/docs/rip-0005-platform-onboarding-and-events.md`: 平台接入与事件规范
-- `packages/python/rare-agent-sdk-python/README.md`: Python SDK/CLI 使用说明
-- `packages/ts/rare-platform-kit-ts/QUICKSTART.md`: TypeScript 平台接入快速开始
-
-## Current Baseline (2026-03-04)
-
-本地执行结果：
-- `./scripts/test_all.sh` 通过
-- `./scripts/test_cov_all.sh` 通过
-- `python3 scripts/validate_rip_docs.py` 通过
-- `python3 -m compileall packages/python/rare-identity-protocol-python packages/python/rare-identity-verifier-python services/rare-identity-core packages/python/rare-agent-sdk-python` 通过
-
-注意：
-- `services/rare-identity-core` 当前默认实现以内存数据结构为主，适合本地与集成测试；生产部署需外置持久化与分布式防重放存储。
+See `CONTRIBUTING.md`, `SECURITY.md`, and `SUPPORT.md`.

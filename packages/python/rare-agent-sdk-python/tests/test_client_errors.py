@@ -5,8 +5,9 @@ from dataclasses import dataclass
 import pytest
 
 from rare_identity_protocol import generate_ed25519_keypair
-from rare_agent_sdk import AgentClient, AgentState
 from rare_agent_sdk.client import AgentClientError, ApiError
+from rare_agent_sdk.client import AgentClient
+from rare_agent_sdk.state import AgentState
 from test_sdk import build_runtime
 
 

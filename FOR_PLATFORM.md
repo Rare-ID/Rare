@@ -216,7 +216,7 @@ Allowed v1 categories include:
 - Rare API base URL: `https://api.rareid.cc`
 - JWKS endpoint: `/.well-known/rare-keys.json`
 - Do not append `/rare` to the base URL
-- For Beta, assume GitHub-backed `L2` exists on the agent side
+- Validate the currently enabled social providers against the Rare deployment you use
 
 ## Recommended Rollout Order
 

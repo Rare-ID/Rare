@@ -1,7 +1,7 @@
 ## RIP Pull Request
 
 ### RIP metadata
-- RIP file: `services/rare-identity-core/docs/<file>.md`
+- RIP file: `docs/rip/<file>.md`
 - Current status: `<Draft|Review|Accepted|Final|Withdrawn|Superseded>`
 - Target status after merge: `<Draft|Review|Accepted|Final|Withdrawn|Superseded>`
 

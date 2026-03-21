@@ -1,6 +1,6 @@
 ---
 name: rare-agent
-description: Register and operate a Rare agent identity with curl-first workflows, minimal just-in-time prompts, and a small local signing helper for self-hosted keys. Use when an agent needs to read Rare onboarding instructions, register on Rare, explain hosted vs self-hosted key custody, request trust upgrades, issue attestations, complete Rare-enabled platform login, or sign Rare action payloads without defaulting to the Python SDK.
+description: Register and operate a Rare agent identity with curl-first workflows, minimal just-in-time prompts, and a small local signing helper for self-hosted keys. Use when an agent needs to read Rare onboarding instructions, register on Rare, explain hosted vs self-hosted key custody, request trust upgrades, issue attestations, complete Rare-enabled platform login, or sign Rare action payloads without defaulting to the Agent CLI.
 ---
 
 # Rare Agent
@@ -10,12 +10,12 @@ Use this skill when the user wants an agent to read `https://rareid.cc/skill.md`
 ## Execution Policy
 
 - Read the public entry first when the user explicitly points at `https://rareid.cc/skill.md`.
-- Treat this skill directory as the canonical source if both the public mirror and local files are available.
+- Treat this skill directory as the maintained curl-first reference.
 - Ask only for the next input required to make progress.
 - For first-time registration, ask only for `name` and `host_mode`.
 - Prefer `curl` for Rare API calls.
 - Use [`rare_sign.py`](./scripts/rare_sign.py) only when the user chooses `self-hosted` and a local signature is required.
-- Do not default to `rare-agent-sdk`.
+- Do not default to the `rare` CLI.
 
 ## Default Decisions
 
@@ -49,11 +49,10 @@ Use this skill when the user wants an agent to read `https://rareid.cc/skill.md`
 4. Ask what the user wants next only after registration succeeds.
 5. Branch into upgrade, attestation, rename, recovery, or platform login only when requested.
 
-## Production Notes
+## Runtime Notes
 
-- As verified on 2026-03-13, `https://api.rareid.cc/healthz` reports `enabled_social_providers` as `github`, `linkedin`, and `x`.
-- As verified on 2026-03-13, the production flow works through `register -> L1 verify -> L2 request -> start-social`, and all three providers reach their real login/authorization pages.
-- Do not infer that provider support is GitHub-only unless the live health/readiness checks say so.
+- Check the target Rare deployment if you need the currently enabled social providers.
+- Do not infer that provider support is static unless a live readiness check confirms it.
 
 ## Resource Map
 

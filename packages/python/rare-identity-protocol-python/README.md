@@ -20,7 +20,7 @@ Rare uses fixed signing strings and token constraints for challenge login, deleg
 
 - `rare-identity-protocol` defines the protocol building blocks
 - `rare-identity-verifier` validates protocol artifacts on the platform side
-- `rare-agent-sdk` builds agent identity flows on top of this package
+- `rare-agent-sdk` provides Agent CLI tooling on top of this package
 - `@rare-id/platform-kit-*` verifies and orchestrates Rare login on third-party platforms
 
 ## Quick Start

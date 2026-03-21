@@ -1,26 +1,26 @@
 # rare-agent-sdk
 
-Python SDK and CLI for the Rare agent identity lifecycle.
+CLI tooling for the Rare agent identity lifecycle.
 
 ## What It Is
 
-`rare-agent-sdk` helps an agent register, manage its identity, request upgrades, issue attestations, and complete Rare login flows against Rare-compatible platforms.
+`rare-agent-sdk` keeps its historical package name for now, but the supported public surface is CLI-only. It helps an agent register, manage identity, request upgrades, issue attestations, and complete Rare login flows against Rare-compatible platforms.
 
 ## Who It Is For
 
-- Agent developers integrating Rare identity into Python apps
+- Agent operators and tool builders that want a packaged CLI
 - Teams choosing between Rare hosted signing and self-hosted keys
 - Operators testing end-to-end login and attestation flows locally
 
 ## Why It Exists
 
-Rare login is not just a single token exchange. Agents need to manage keys, sign fixed protocol payloads, refresh attestations, handle human verification upgrades, and produce delegation material for platforms. This SDK packages that lifecycle into a Python API and CLI.
+Rare login is not just a single token exchange. Agents need to manage keys, sign fixed protocol payloads, refresh attestations, handle human verification upgrades, and produce delegation material for platforms. This package ships the Agent CLI and local signer needed to operate that lifecycle.
 
 ## How It Fits Into Rare
 
-- `rare-protocol-py` defines the public protocol rules
-- `rare-agent-sdk` handles the agent-side lifecycle
-- `rare-platform-ts` is the platform-side toolkit that verifies what this SDK produces
+- `rare-identity-protocol` defines the public protocol rules
+- `rare-agent-sdk` provides the Agent CLI and local signer tooling
+- `Rare Platform Kit` is the platform-side toolkit that verifies what this CLI produces
 
 ## Quick Start
 
@@ -36,22 +36,6 @@ rare refresh-attestation --rare-url https://api.rareid.cc
 rare show-state --rare-url https://api.rareid.cc
 ```
 
-Use the Python SDK:
-
-```python
-from rare_agent_sdk import AgentClient, AgentState
-
-state = AgentState()
-client = AgentClient(
-    state=state,
-    rare_base_url="https://api.rareid.cc",
-)
-client.register(name="agent-1")
-client.refresh_attestation()
-print(client.state.agent_id)
-client.close()
-```
-
 ## Production Notes
 
 - `agent_id` is the Ed25519 public key and remains the primary identity key.
@@ -59,8 +43,8 @@ client.close()
   - `hosted-signer`: Rare manages signing on behalf of the agent.
   - `self-hosted`: the agent keeps its own private key.
 - Self-hosted keys are stored separately from the JSON state file under `~/.config/rare/keys/` with `0600` permissions.
-- `rare-signer` lets you keep the private key out of the main SDK process by signing over local IPC.
-- For platform login, this SDK produces delegation and attestation materials that should be verified locally by the platform.
+- `rare-signer` lets you keep the private key out of the main CLI process by signing over local IPC.
+- Imported Python modules under `rare_agent_sdk` are internal implementation details and are not a supported public API.
 
 ## Common CLI Flows
 
@@ -105,5 +89,5 @@ python -m build
 
 ## Related Repositories
 
-- Protocol reference and RIP docs: `Rare-ID/rare-protocol-py`
-- Platform integration toolkit: `Rare-ID/rare-platform-ts`
+- Main Rare repository: `https://github.com/Rare-ID/Rare`
+- Platform SDK repository: `https://github.com/Rare-ID/rare-platform-ts`

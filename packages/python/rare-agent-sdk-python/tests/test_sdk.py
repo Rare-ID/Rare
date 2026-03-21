@@ -16,10 +16,11 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from _platform_stub import PlatformStubService, create_platform_app
-from rare_agent_sdk import AgentClient, AgentState
 from rare_agent_sdk.cli import main as cli_main
+from rare_agent_sdk.client import AgentClient
 from rare_agent_sdk.local_signer import create_local_signer_server
 from rare_agent_sdk.state import (
+    AgentState,
     get_agent_private_key_path,
     get_hosted_management_token_path,
     get_signer_key_path,

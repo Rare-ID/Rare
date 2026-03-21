@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import json
 
 from rare_agent_sdk import cli as cli_module
@@ -159,3 +160,9 @@ def test_cli_default_rare_url_matches_root_api_prefix() -> None:
     parser = cli_module._build_parser()
     args = parser.parse_args(["show-state"])
     assert args.rare_url == "http://127.0.0.1:8000"
+
+
+def test_package_root_does_not_export_python_sdk_symbols() -> None:
+    package = importlib.import_module("rare_agent_sdk")
+    assert package.__all__ == []
+    assert not hasattr(package, "AgentClient")

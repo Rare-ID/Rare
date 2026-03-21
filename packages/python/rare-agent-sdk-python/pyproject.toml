@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "rare-agent-sdk"
 version = "0.2.0"
-description = "Python SDK for Rare Identity agent flows"
+description = "CLI tooling for Rare agent identity flows"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11"
@@ -16,10 +16,10 @@ dependencies = [
 keywords = ["rare", "agent", "identity", "attestation", "delegation"]
 
 [project.urls]
-Homepage = "https://api.rareid.cc"
-Repository = "https://github.com/Rare-ID/rare-agent-python"
-Documentation = "https://github.com/Rare-ID/rare-agent-python"
-Issues = "https://github.com/Rare-ID/rare-agent-python/issues"
+Homepage = "https://rareid.cc"
+Repository = "https://github.com/Rare-ID/Rare"
+Documentation = "https://github.com/Rare-ID/Rare/tree/main/packages/python/rare-agent-sdk-python"
+Issues = "https://github.com/Rare-ID/Rare/issues"
 
 [project.scripts]
 rare = "rare_agent_sdk.cli:main"

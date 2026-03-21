@@ -1,12 +1,11 @@
-from rare_agent_sdk.client import AgentClient, AgentClientError, ApiError
-from rare_agent_sdk.state import AgentState, DEFAULT_STATE_FILE, load_state, save_state
+"""Internal modules for the ``rare`` Agent CLI.
 
-__all__ = [
-    "AgentClient",
-    "AgentClientError",
-    "ApiError",
-    "AgentState",
-    "DEFAULT_STATE_FILE",
-    "load_state",
-    "save_state",
-]
+The supported public interface of this package is the command-line entrypoints:
+
+- ``rare``
+- ``rare-signer``
+
+Imported Python symbols under ``rare_agent_sdk`` are not a stable public API.
+"""
+
+__all__: list[str] = []

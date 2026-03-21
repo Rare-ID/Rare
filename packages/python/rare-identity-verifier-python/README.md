@@ -20,7 +20,7 @@ Platforms should be able to verify Rare-issued artifacts locally instead of trea
 
 - `rare-identity-protocol` constructs protocol artifacts
 - `rare-identity-verifier` validates those artifacts
-- `rare-agent-sdk` produces agent-side materials
+- Rare Agent tooling produces the agent-side materials
 - `@rare-id/platform-kit-*` offers the TypeScript equivalent for platform integrations
 
 ## Quick Start

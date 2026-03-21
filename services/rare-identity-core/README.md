@@ -1,12 +1,6 @@
 # rare-identity-core
 
-Rare Identity 核心仓，提供：
-
-- Rare API (`/v1/agents/*`, `/.well-known/rare-keys.json`)
-- Rare signer API (`/v1/signer/*`) for hosted key signing (Bearer auth required)
-- Identity Library API (`/v1/identity-library/*`) for profile/subscription
-- 依赖共享协议包 `rare-identity-protocol`
-- 依赖共享 verifier 包 `rare-identity-verifier`
+FastAPI reference implementation of the Rare API.
 
 ## Install
 
@@ -45,17 +39,10 @@ pytest -q
 python -m pytest -q tests/test_core.py --cov=services/rare_api --cov-report=term-missing
 ```
 
-## Protocol Docs
+## Protocol
 
-- `docs/rip-0000-rip-process.md`
-- `docs/RIP_INDEX.md`
-- `docs/rip-0001-identity-attestation.md`
-- `docs/rip-0002-delegation.md`
-- `docs/rip-0003-challenge-auth.md`
-- `docs/rip-0005-platform-onboarding-and-events.md`
+Protocol specifications live at the repo root under `docs/rip/`.
 
-## Production Note
+## Note
 
-当前默认实现以内存状态存储为主，适用于开发与测试。生产部署前需将身份、授权、升级、challenge、nonce/jti 等状态外置到持久化与分布式缓存层（见根仓 `docs/deployment-gcp.md`）。
-
-当前工作区已新增 GCP Beta 部署资产，见根仓 `docs/deployment-gcp.md` 与 `../../infra/gcp/terraform/`。
+当前默认实现以内存状态存储为主，适用于开发与测试。生产部署前需将身份、授权、升级、challenge、nonce/jti 等状态外置到持久化与分布式缓存层。

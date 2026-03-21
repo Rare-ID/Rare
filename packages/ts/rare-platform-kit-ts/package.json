@@ -4,6 +4,10 @@
   "version": "0.1.0",
   "description": "Rare Platform Kit monorepo for TypeScript third-party platform integration",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Rare-ID/rare-platform-ts.git"
+  },
   "packageManager": "pnpm@9.12.0",
   "engines": {
     "node": ">=20"

@@ -20,12 +20,9 @@ Rare 是一个面向 AI Agent 的身份与信任基础设施，目标是让 Agen
 架构形态（当前生效）：
 
 - 五包工作区（`rare-identity-protocol-python`、`rare-identity-verifier-python`、`rare-identity-core`、`rare-agent-sdk-python`、`rare-platform-kit-ts`）
-- **关键**：当前仓库已切换到 split-repo 工作区，无旧命名兼容层
+- **关键**：当前仓库就是 Rare 的 canonical monorepo，无旧公开仓同步层
 - Python 包依赖链：`rare-agent-sdk-python -> rare-identity-protocol`，`rare-identity-core -> rare-identity-protocol + rare-identity-verifier`
-- 仓库拓扑：
-  - 私有运营主仓：`Rare-Sors/Rare`
-  - 公开 OSS 仓：`Rare-ID/rare-protocol-py`、`Rare-ID/rare-agent-python`、`Rare-ID/rare-platform-ts`
-  - 当前开发主入口仍是这个私有工作区；公开仓由同步 workflow 自动更新
+- 对外仓库边界：主仓为 `Rare-ID/Rare`；Platform SDK 对外链接与包元数据指向 `Rare-ID/rare-platform-ts`；Agent CLI 不单拆仓
 - 当前生产 Rare API：`https://api.rareid.cc`
 
 ---
@@ -130,7 +127,7 @@ ruff check packages/python/rare-identity-protocol-python packages/python/rare-id
 ./scripts/audit_deps.sh
 ```
 
-### 5) SDK/CLI 常用命令
+### 5) Agent CLI 常用命令
 
 ```bash
 cd packages/python/rare-agent-sdk-python
@@ -156,17 +153,16 @@ rare show-state
 ├── packages/python/rare-identity-verifier-python/       # verifier 共享包: identity/delegation 校验
 ├── services/rare-identity-core/                  # 身份核心仓
 │   ├── services/rare_api/               # Rare API: self_register / set_name / refresh / signer
-│   ├── docs/                            # RIP 规范草案
 │   └── tests/                           # Core 单元与接口测试
-├── packages/python/rare-agent-sdk-python/                     # Agent SDK + CLI
-│   ├── src/rare_agent_sdk/                    # AgentClient、状态管理、CLI
-│   └── tests/                           # SDK 与 CLI 测试
+├── packages/python/rare-agent-sdk-python/                     # Agent CLI + local signer
+│   ├── src/rare_agent_sdk/                    # CLI 内部实现、状态管理、本地 signer
+│   └── tests/                           # CLI 与内部实现测试
 ├── packages/ts/rare-platform-kit-ts/                # TypeScript 平台适配 SDK（Rare Platform Kit）
 │   ├── packages/platform-kit-core/      # 协议校验与签名串构造
 │   ├── packages/platform-kit-web/       # Web 标准适配与登录编排
 │   ├── packages/platform-kit-client/    # Rare API typed client
 │   └── packages/platform-kit-redis/     # Redis 存储适配
-├── open-source/                          # 公开仓 README / CI / publish workflow 模板
+├── docs/rip/                            # RIP 规范与测试向量
 ├── out/public-repos/                    # 同步/拆分脚本生成的临时镜像，可删除后重建
 ├── scripts/test_all.sh                  # 工作区测试入口
 └── docs/                                # 根文档（用户流程、平台接入流程）
@@ -174,10 +170,9 @@ rare show-state
 
 补充说明：
 
-- `out/` 不是源码目录，而是 `scripts/legacy/split_repos.sh`、`scripts/legacy/verify_split_repos.sh`、`scripts/publish_public_repos.sh` 等脚本使用的生成产物目录
+- `out/` 不是源码目录，而是临时产物与可重建输出目录
 - `out/` 可以安全删除；需要时脚本会重新生成
-- 正式发布流程以 [docs/release-sop.md](/Volumes/ST7/Projects/Rare/docs/release-sop.md) 为准
-- 运维现状、GCP、Cloudflare、GitHub secrets 以 [docs/ops-inventory.md](/Volumes/ST7/Projects/Rare/docs/ops-inventory.md) 为准
+- 正式发布流程以 [docs/release-guide.md](/Volumes/ST7/Projects/Rare/docs/release-guide.md) 为准
 
 ---
 
@@ -216,8 +211,8 @@ rare show-state
 
 ### 安全红线
 
-- ⚠️ 禁止提交私钥、会话 token、SDK 本地状态文件中的敏感字段
-- ⚠️ 非必要不要改动签名 payload 格式；一旦改动必须同步更新 `services/rare-identity-core/docs/RIP` 与跨仓测试
+- ⚠️ 禁止提交私钥、会话 token、Agent CLI 本地状态文件中的敏感字段
+- ⚠️ 非必要不要改动签名 payload 格式；一旦改动必须同步更新 `docs/rip/` 与跨仓测试
 
 ---
 
@@ -262,4 +257,4 @@ pip install pytest-cov
 2. 运行 `./scripts/test_all.sh`
 3. 运行构建与检查命令（至少 `compileall`）
 4. 涉及协议字段/签名串变更时，同步更新 RIP 文档与跨仓集成测试
-5. 涉及 SDK / 公开仓发布时，按 `docs/release-sop.md` 执行，不要直接在私有主仓把“同步”和“发版”混成一步
+5. 涉及包发布时，按 `docs/release-guide.md` 执行
