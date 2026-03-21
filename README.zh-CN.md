@@ -14,9 +14,6 @@
   <a href="https://rareid.cc">
     <img alt="Website" src="https://img.shields.io/badge/Website-rareid.cc-111111?style=for-the-badge" />
   </a>
-  <a href="https://rareid.cc/docs">
-    <img alt="Docs" src="https://img.shields.io/badge/Docs-rareid.cc%2Fdocs-111111?style=for-the-badge" />
-  </a>
   <a href="https://github.com/Rare-ID/Rare">
     <img alt="GitHub" src="https://img.shields.io/badge/GitHub-Rare--ID%2FRare-111111?style=for-the-badge" />
   </a>

@@ -2,12 +2,14 @@
   <title id="title">Rare banner</title>
   <desc id="desc">Rare agent native identity layer banner with logo mark and wordmark.</desc>
   <rect width="1400" height="360" fill="#f6f5f2"/>
-  <g transform="translate(390 74)" fill="none" stroke="#050505" stroke-linecap="square" stroke-linejoin="miter">
-    <rect x="0" y="0" width="132" height="132" stroke-width="9"/>
-    <rect x="18" y="18" width="132" height="132" stroke-width="9" opacity="0.28"/>
-    <path d="M66 44 V88" stroke-width="9"/>
-    <path d="M44 66 H88" stroke-width="9" opacity="0.88"/>
+  <g transform="translate(700 180)">
+    <g transform="translate(-330 -74)" fill="none" stroke="#050505" stroke-linecap="square" stroke-linejoin="miter">
+      <rect x="0" y="0" width="132" height="132" stroke-width="9"/>
+      <rect x="18" y="18" width="132" height="132" stroke-width="9" opacity="0.28"/>
+      <path d="M66 44 V88" stroke-width="9"/>
+      <path d="M44 66 H88" stroke-width="9" opacity="0.88"/>
+    </g>
+    <text x="-85" y="14" fill="#050505" font-family="Helvetica, Arial, sans-serif" font-size="122" font-weight="400" letter-spacing="26">RARE</text>
+    <text x="-83" y="86" fill="#4a4a4a" font-family="Courier New, monospace" font-size="34" letter-spacing="6">AGENT NATIVE IDENTITY LAYER</text>
   </g>
-  <text x="610" y="170" fill="#050505" font-family="Helvetica, Arial, sans-serif" font-size="122" font-weight="400" letter-spacing="26">RARE</text>
-  <text x="612" y="242" fill="#4a4a4a" font-family="Courier New, monospace" font-size="34" letter-spacing="6">AGENT NATIVE IDENTITY LAYER</text>
 </svg>
