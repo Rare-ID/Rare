@@ -56,6 +56,7 @@ Usage:
 
 - automatic publish remains enabled for `rare-identity-protocol` and `rare-agent-sdk` on `main`
 - manual `workflow_dispatch` can publish any listed Python package to TestPyPI or PyPI
+- for normal Agent usage, `rare-agent-sdk` is the primary install target; `rare-identity-verifier` and `rare-identity-core` are optional Python distributions for backend or self-hosted service use
 
 ## TypeScript Platform Packages
 

@@ -2,12 +2,31 @@
   <img src="docs/assets/rare-banner.svg" alt="Rare banner" width="900" />
 </p>
 
-[English](README.md) | [简体中文](README.zh-CN.md)
+<p align="center">
+  <a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a>
+</p>
 
-Rare Protocol, also known as RareID or Rare Identity Protocol, gives AI agents portable identity, trust signaling, and short-lived capability sessions across platforms.
+<p align="center">
+  Rare Protocol, also known as RareID or Rare Identity Protocol, gives AI agents portable identity, trust signaling, and short-lived capability sessions across platforms.
+</p>
 
-Main repository: `https://github.com/Rare-ID/Rare`  
-Website: `https://rareid.cc`
+<p align="center">
+  <a href="https://rareid.cc">
+    <img alt="Website" src="https://img.shields.io/badge/Website-rareid.cc-111111?style=for-the-badge" />
+  </a>
+  <a href="https://rareid.cc/docs">
+    <img alt="Docs" src="https://img.shields.io/badge/Docs-rareid.cc%2Fdocs-111111?style=for-the-badge" />
+  </a>
+  <a href="https://github.com/Rare-ID/Rare">
+    <img alt="GitHub" src="https://img.shields.io/badge/GitHub-Rare--ID%2FRare-111111?style=for-the-badge" />
+  </a>
+  <a href="https://x.com/rareaip">
+    <img alt="X" src="https://img.shields.io/badge/X-@rareaip-111111?style=for-the-badge" />
+  </a>
+  <a href="https://discord.gg/SNWYHS4nfW">
+    <img alt="Discord" src="https://img.shields.io/badge/Discord-Join%20Community-111111?style=for-the-badge" />
+  </a>
+</p>
 
 ## Why Rare
 

@@ -2,12 +2,31 @@
   <img src="docs/assets/rare-banner.svg" alt="Rare banner" width="900" />
 </p>
 
-[English](README.md) | [简体中文](README.zh-CN.md)
+<p align="center">
+  <a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a>
+</p>
 
-Rare Protocol，也叫 RareID 或 Rare Identity Protocol，是一个面向 AI Agent 的身份与信任层，让 Agent 可以在不同平台之间携带可移植身份、信任信号，以及短期 capability session。
+<p align="center">
+  Rare Protocol，也叫 RareID 或 Rare Identity Protocol，是一个面向 AI Agent 的身份与信任层，让 Agent 可以在不同平台之间携带可移植身份、信任信号，以及短期 capability session。
+</p>
 
-主仓库：`https://github.com/Rare-ID/Rare`  
-官网：`https://rareid.cc`
+<p align="center">
+  <a href="https://rareid.cc">
+    <img alt="Website" src="https://img.shields.io/badge/Website-rareid.cc-111111?style=for-the-badge" />
+  </a>
+  <a href="https://rareid.cc/docs">
+    <img alt="Docs" src="https://img.shields.io/badge/Docs-rareid.cc%2Fdocs-111111?style=for-the-badge" />
+  </a>
+  <a href="https://github.com/Rare-ID/Rare">
+    <img alt="GitHub" src="https://img.shields.io/badge/GitHub-Rare--ID%2FRare-111111?style=for-the-badge" />
+  </a>
+  <a href="https://x.com/rareaip">
+    <img alt="X" src="https://img.shields.io/badge/X-@rareaip-111111?style=for-the-badge" />
+  </a>
+  <a href="https://discord.gg/SNWYHS4nfW">
+    <img alt="Discord" src="https://img.shields.io/badge/Discord-Join%20Community-111111?style=for-the-badge" />
+  </a>
+</p>
 
 ## 为什么是 Rare
 
