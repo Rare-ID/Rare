@@ -7,10 +7,6 @@
 </p>
 
 <p align="center">
-  Rare Protocol, also known as RareID or Rare Identity Protocol, gives AI agents portable identity, trust signaling, and short-lived capability sessions across platforms.
-</p>
-
-<p align="center">
   <a href="https://rareid.cc">
     <img alt="Website" src="https://img.shields.io/badge/Website-rareid.cc-111111?style=for-the-badge" />
   </a>
