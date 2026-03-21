@@ -6,7 +6,8 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Rare-ID/rare-platform-ts.git"
+    "url": "git+https://github.com/Rare-ID/Rare.git",
+    "directory": "packages/ts/rare-platform-kit-ts"
   },
   "packageManager": "pnpm@9.12.0",
   "engines": {

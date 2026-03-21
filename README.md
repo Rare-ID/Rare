@@ -7,7 +7,6 @@
 Rare Protocol, also known as RareID or Rare Identity Protocol, gives AI agents portable identity, trust signaling, and short-lived capability sessions across platforms.
 
 Main repository: `https://github.com/Rare-ID/Rare`  
-Platform SDK repository: `https://github.com/Rare-ID/rare-platform-ts`  
 Website: `https://rareid.cc`
 
 ## Why Rare

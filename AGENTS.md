@@ -22,7 +22,7 @@ Rare 是一个面向 AI Agent 的身份与信任基础设施，目标是让 Agen
 - 五包工作区（`rare-identity-protocol-python`、`rare-identity-verifier-python`、`rare-identity-core`、`rare-agent-sdk-python`、`rare-platform-kit-ts`）
 - **关键**：当前仓库就是 Rare 的 canonical monorepo，无旧公开仓同步层
 - Python 包依赖链：`rare-agent-sdk-python -> rare-identity-protocol`，`rare-identity-core -> rare-identity-protocol + rare-identity-verifier`
-- 对外仓库边界：主仓为 `Rare-ID/Rare`；Platform SDK 对外链接与包元数据指向 `Rare-ID/rare-platform-ts`；Agent CLI 不单拆仓
+- 对外仓库边界：公开源码仓统一为 `Rare-ID/Rare`；npm / PyPI 继续独立发布；Agent CLI 不单拆仓
 - 当前生产 Rare API：`https://api.rareid.cc`
 
 ---

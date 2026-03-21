@@ -15,8 +15,8 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Rare-ID/rare-platform-ts.git",
-    "directory": "packages/platform-kit-web"
+    "url": "git+https://github.com/Rare-ID/Rare.git",
+    "directory": "packages/ts/rare-platform-kit-ts/packages/platform-kit-web"
   },
   "publishConfig": {
     "access": "public",

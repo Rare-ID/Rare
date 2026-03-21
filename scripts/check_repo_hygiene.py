@@ -79,6 +79,7 @@ BANNED_PATHS = {
 BANNED_PATTERNS = {
     r"Rare-ID/rare-agent-python": "legacy Agent split-repo reference",
     r"Rare-ID/rare-protocol-py": "legacy protocol split-repo reference",
+    r"Rare-ID/rare-platform-ts": "legacy platform split-repo reference",
     r"github\.com/rare-project/rare": "legacy placeholder repo URL",
     r"Rare-Sors/": "private repo reference",
     r"sync-public-oss": "legacy public sync workflow reference",

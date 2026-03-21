@@ -90,4 +90,3 @@ python -m build
 ## Related Repositories
 
 - Main Rare repository: `https://github.com/Rare-ID/Rare`
-- Platform SDK repository: `https://github.com/Rare-ID/rare-platform-ts`

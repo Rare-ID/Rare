@@ -5,7 +5,7 @@ The main Rare repository is `https://github.com/Rare-ID/Rare`.
 Repository boundaries for release metadata:
 
 - Python protocol, verifier, core, and Agent CLI packages point to `Rare-ID/Rare`
-- TypeScript Platform SDK packages point to `Rare-ID/rare-platform-ts`
+- TypeScript Platform SDK packages also point to `Rare-ID/Rare`
 
 ## Before Releasing
 

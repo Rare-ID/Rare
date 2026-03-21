@@ -7,7 +7,6 @@
 Rare Protocol，也叫 RareID 或 Rare Identity Protocol，是一个面向 AI Agent 的身份与信任层，让 Agent 可以在不同平台之间携带可移植身份、信任信号，以及短期 capability session。
 
 主仓库：`https://github.com/Rare-ID/Rare`  
-Platform SDK 仓库：`https://github.com/Rare-ID/rare-platform-ts`  
 官网：`https://rareid.cc`
 
 ## 为什么是 Rare

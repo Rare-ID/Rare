@@ -55,7 +55,7 @@ Read next:
 - `EVENTS_GUIDE.md` for platform event ingest
 - `examples/http-minimal.ts` for a copy-paste server flow
 
-Source repository: `https://github.com/Rare-ID/rare-platform-ts`
+Source repository: `https://github.com/Rare-ID/Rare`
 
 ## Packages
 
