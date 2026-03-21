@@ -83,7 +83,7 @@ This RIP standardizes v1 signing strings and should remain stable. Any future fo
 - Example challenge string: `rare-auth-v1:platform:abc:1700000000:1700000300`
 
 ## Reference Implementation
-- `packages/python/rare-identity-protocol-python/src/rare_identity_protocol`
+- `packages/shared/python/rare-identity-protocol-python/src/rare_identity_protocol`
 - `services/rare-identity-core/services/rare_api/service.py`
 - `services/rare-identity-core/tests/test_core.py`
-- `packages/python/rare-agent-sdk-python/tests/test_sdk.py`
+- `packages/agent/python/rare-agent-sdk-python/tests/test_sdk.py`

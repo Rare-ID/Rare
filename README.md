@@ -61,13 +61,11 @@ The supported Agent package interface is the `rare` / `rare-signer` CLI surface.
 
 ### Platform Quick Start
 
-Install the TypeScript platform packages:
+TypeScript:
 
 ```bash
 pnpm add @rare-id/platform-kit-core @rare-id/platform-kit-client @rare-id/platform-kit-web
 ```
-
-Create a minimal Rare platform kit:
 
 ```ts
 import { RareApiClient } from "@rare-id/platform-kit-client";
@@ -91,10 +89,39 @@ const kit = createRarePlatformKit({
 });
 ```
 
+Python:
+
+```bash
+pip install rare-platform-sdk
+```
+
+```python
+from rare_platform_sdk import (
+    InMemoryChallengeStore,
+    InMemoryReplayStore,
+    InMemorySessionStore,
+    RareApiClient,
+    RarePlatformKitConfig,
+    create_rare_platform_kit,
+)
+
+rare_api_client = RareApiClient(rare_base_url="https://api.rareid.cc")
+kit = create_rare_platform_kit(
+    RarePlatformKitConfig(
+        aud="platform",
+        rare_api_client=rare_api_client,
+        challenge_store=InMemoryChallengeStore(),
+        replay_store=InMemoryReplayStore(),
+        session_store=InMemorySessionStore(),
+    )
+)
+```
+
 Platform integration documentation starts here:
 
 - `FOR_PLATFORM.md`
-- `packages/ts/rare-platform-kit-ts/README.md`
+- `packages/platform/python/rare-platform-sdk-python/README.md`
+- `packages/platform/ts/rare-platform-kit-ts/README.md`
 
 ## Use Cases
 
@@ -105,11 +132,12 @@ Platform integration documentation starts here:
 
 ## Repository Map
 
-- `packages/python/rare-identity-protocol-python/`: protocol primitives and signing inputs
-- `packages/python/rare-identity-verifier-python/`: Python verification helpers
+- `packages/shared/python/rare-identity-protocol-python/`: protocol primitives and signing inputs
+- `packages/shared/python/rare-identity-verifier-python/`: Python verification helpers
 - `services/rare-identity-core/`: FastAPI reference implementation of the Rare API
-- `packages/python/rare-agent-sdk-python/`: Agent CLI package and local signer tooling
-- `packages/ts/rare-platform-kit-ts/`: TypeScript platform SDK source tree
+- `packages/agent/python/rare-agent-sdk-python/`: Agent CLI package and local signer tooling
+- `packages/platform/python/rare-platform-sdk-python/`: Python platform SDK source tree
+- `packages/platform/ts/rare-platform-kit-ts/`: TypeScript platform SDK source tree
 - `docs/rip/`: RIP specifications and protocol vectors
 - `skills/rare-agent/`: curl-first Agent operating skill
 - `skills/rare-agent-cli/`: CLI-first Agent operating skill
@@ -120,8 +148,9 @@ Platform integration documentation starts here:
 - `FOR_PLATFORM.md`: platform integration guide
 - `docs/rip/RIP_INDEX.md`: protocol index
 - `docs/release-guide.md`: package release workflow
-- `packages/python/rare-agent-sdk-python/README.md`: Agent CLI usage
-- `packages/ts/rare-platform-kit-ts/README.md`: platform SDK guide
+- `packages/agent/python/rare-agent-sdk-python/README.md`: Agent CLI usage
+- `packages/platform/python/rare-platform-sdk-python/README.md`: Python platform SDK guide
+- `packages/platform/ts/rare-platform-kit-ts/README.md`: TypeScript platform SDK guide
 
 ## More Links
 
@@ -140,14 +169,16 @@ Set up the workspace:
 python3.11 -m venv .venv
 source .venv/bin/activate
 python -m pip install -U pip setuptools wheel
-pip install -r ./packages/python/rare-identity-protocol-python/requirements-test.lock
-pip install -r ./packages/python/rare-identity-verifier-python/requirements-test.lock
-pip install -e "./packages/python/rare-identity-protocol-python[test]"
-pip install -e "./packages/python/rare-identity-verifier-python[test]"
+pip install -r ./packages/shared/python/rare-identity-protocol-python/requirements-test.lock
+pip install -r ./packages/shared/python/rare-identity-verifier-python/requirements-test.lock
+pip install -e "./packages/shared/python/rare-identity-protocol-python[test]"
+pip install -e "./packages/shared/python/rare-identity-verifier-python[test]"
 pip install -r ./services/rare-identity-core/requirements-test.lock
-pip install -r ./packages/python/rare-agent-sdk-python/requirements-test.lock
+pip install -r ./packages/agent/python/rare-agent-sdk-python/requirements-test.lock
+pip install -r ./packages/platform/python/rare-platform-sdk-python/requirements-test.lock
 pip install -e "./services/rare-identity-core[test]"
-pip install -e "./packages/python/rare-agent-sdk-python[test]"
+pip install -e "./packages/agent/python/rare-agent-sdk-python[test]"
+pip install -e "./packages/platform/python/rare-platform-sdk-python[test]"
 ```
 
 Run the standard checks:
@@ -156,7 +187,7 @@ Run the standard checks:
 python scripts/validate_rip_docs.py --strict
 python scripts/check_repo_hygiene.py
 ./scripts/test_all.sh
-python -m compileall packages/python/rare-identity-protocol-python packages/python/rare-identity-verifier-python services/rare-identity-core packages/python/rare-agent-sdk-python
+python -m compileall packages/shared/python/rare-identity-protocol-python packages/shared/python/rare-identity-verifier-python services/rare-identity-core packages/agent/python/rare-agent-sdk-python packages/platform/python/rare-platform-sdk-python
 ```
 
 ## Contributing

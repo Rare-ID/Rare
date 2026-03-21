@@ -14,14 +14,16 @@ Thanks for contributing to Rare.
 python3.11 -m venv .venv
 source .venv/bin/activate
 python -m pip install -U pip setuptools wheel
-pip install -r ./packages/python/rare-identity-protocol-python/requirements-test.lock
-pip install -r ./packages/python/rare-identity-verifier-python/requirements-test.lock
-pip install -e "./packages/python/rare-identity-protocol-python[test]"
-pip install -e "./packages/python/rare-identity-verifier-python[test]"
+pip install -r ./packages/shared/python/rare-identity-protocol-python/requirements-test.lock
+pip install -r ./packages/shared/python/rare-identity-verifier-python/requirements-test.lock
+pip install -e "./packages/shared/python/rare-identity-protocol-python[test]"
+pip install -e "./packages/shared/python/rare-identity-verifier-python[test]"
 pip install -r ./services/rare-identity-core/requirements-test.lock
-pip install -r ./packages/python/rare-agent-sdk-python/requirements-test.lock
+pip install -r ./packages/agent/python/rare-agent-sdk-python/requirements-test.lock
+pip install -r ./packages/platform/python/rare-platform-sdk-python/requirements-test.lock
 pip install -e "./services/rare-identity-core[test]"
-pip install -e "./packages/python/rare-agent-sdk-python[test]"
+pip install -e "./packages/agent/python/rare-agent-sdk-python[test]"
+pip install -e "./packages/platform/python/rare-platform-sdk-python[test]"
 ```
 
 Run the standard checks before opening a PR:
@@ -30,13 +32,13 @@ Run the standard checks before opening a PR:
 python scripts/validate_rip_docs.py --strict
 python scripts/check_repo_hygiene.py
 ./scripts/test_all.sh
-python -m compileall packages/python/rare-identity-protocol-python packages/python/rare-identity-verifier-python services/rare-identity-core packages/python/rare-agent-sdk-python
+python -m compileall packages/shared/python/rare-identity-protocol-python packages/shared/python/rare-identity-verifier-python services/rare-identity-core packages/agent/python/rare-agent-sdk-python packages/platform/python/rare-platform-sdk-python
 ```
 
 If you touch the TypeScript platform kit, also run:
 
 ```bash
-(cd packages/ts/rare-platform-kit-ts && pnpm -r build && pnpm -r test)
+(cd packages/platform/ts/rare-platform-kit-ts && pnpm -r build && pnpm -r test)
 ```
 
 ## Protocol Changes

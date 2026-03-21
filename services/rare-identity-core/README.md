@@ -5,19 +5,19 @@ FastAPI reference implementation of the Rare API.
 ## Install
 
 ```bash
-pip install -e ../../packages/python/rare-identity-protocol-python[test]
-pip install -e ../../packages/python/rare-identity-verifier-python[test]
+pip install -e ../../packages/shared/python/rare-identity-protocol-python[test]
+pip install -e ../../packages/shared/python/rare-identity-verifier-python[test]
 pip install -e .[test]
 ```
 
 可复现安装：
 
 ```bash
-pip install -r ../../packages/python/rare-identity-protocol-python/requirements-test.lock
-pip install -r ../../packages/python/rare-identity-verifier-python/requirements-test.lock
+pip install -r ../../packages/shared/python/rare-identity-protocol-python/requirements-test.lock
+pip install -r ../../packages/shared/python/rare-identity-verifier-python/requirements-test.lock
 pip install -r requirements-test.lock
-pip install -e ../../packages/python/rare-identity-protocol-python[test] --no-deps
-pip install -e ../../packages/python/rare-identity-verifier-python[test] --no-deps
+pip install -e ../../packages/shared/python/rare-identity-protocol-python[test] --no-deps
+pip install -e ../../packages/shared/python/rare-identity-verifier-python[test] --no-deps
 pip install -e .[test] --no-deps
 ```
 

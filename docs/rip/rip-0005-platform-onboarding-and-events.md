@@ -126,11 +126,11 @@ This RIP documents v1 onboarding and governance flows without changing signed pa
 
 ## Test Vectors/Examples
 - Signing input vectors: `docs/rip/test-vectors/rip-v1-signing-inputs.json`
-- Integration checks: `packages/python/rare-agent-sdk-python/tests/test_sdk.py`
+- Integration checks: `packages/agent/python/rare-agent-sdk-python/tests/test_sdk.py`
 
 ## Reference Implementation
 - `services/rare-identity-core/services/rare_api/main.py`
 - `services/rare-identity-core/services/rare_api/service.py`
 - `services/rare-identity-core/tests/test_core.py`
-- `packages/python/rare-agent-sdk-python/tests/_platform_stub.py`
-- `packages/python/rare-agent-sdk-python/tests/test_sdk.py`
+- `packages/agent/python/rare-agent-sdk-python/tests/_platform_stub.py`
+- `packages/agent/python/rare-agent-sdk-python/tests/test_sdk.py`

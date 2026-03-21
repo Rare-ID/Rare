@@ -4,7 +4,7 @@ The main Rare repository is `https://github.com/Rare-ID/Rare`.
 
 Repository boundaries for release metadata:
 
-- Python protocol, verifier, core, and Agent CLI packages point to `Rare-ID/Rare`
+- Python protocol, verifier, core, Agent CLI, and platform SDK packages point to `Rare-ID/Rare`
 - TypeScript Platform SDK packages also point to `Rare-ID/Rare`
 
 ## Before Releasing
@@ -16,13 +16,13 @@ Repository boundaries for release metadata:
 python scripts/validate_rip_docs.py --strict
 python scripts/check_repo_hygiene.py
 ./scripts/test_all.sh
-python -m compileall packages/python/rare-identity-protocol-python packages/python/rare-identity-verifier-python services/rare-identity-core packages/python/rare-agent-sdk-python
+python -m compileall packages/shared/python/rare-identity-protocol-python packages/shared/python/rare-identity-verifier-python services/rare-identity-core packages/agent/python/rare-agent-sdk-python packages/platform/python/rare-platform-sdk-python
 ```
 
 3. If you changed the TypeScript platform kit, also run:
 
 ```bash
-(cd packages/ts/rare-platform-kit-ts && pnpm -r build && pnpm -r test)
+(cd packages/platform/ts/rare-platform-kit-ts && pnpm -r build && pnpm -r test)
 ```
 
 ## Python Packages
@@ -33,19 +33,22 @@ Packages in this repo:
 - `rare-identity-verifier`
 - `rare-identity-core`
 - `rare-agent-sdk` (CLI package; historical name retained)
+- `rare-platform-sdk`
 
 Build locally:
 
 ```bash
 python -m pip install -U build twine
-(cd packages/python/rare-identity-protocol-python && python -m build)
-(cd packages/python/rare-identity-verifier-python && python -m build)
+(cd packages/shared/python/rare-identity-protocol-python && python -m build)
+(cd packages/shared/python/rare-identity-verifier-python && python -m build)
 (cd services/rare-identity-core && python -m build)
-(cd packages/python/rare-agent-sdk-python && python -m build)
-python -m twine check packages/python/rare-identity-protocol-python/dist/*
-python -m twine check packages/python/rare-identity-verifier-python/dist/*
+(cd packages/agent/python/rare-agent-sdk-python && python -m build)
+(cd packages/platform/python/rare-platform-sdk-python && python -m build)
+python -m twine check packages/shared/python/rare-identity-protocol-python/dist/*
+python -m twine check packages/shared/python/rare-identity-verifier-python/dist/*
 python -m twine check services/rare-identity-core/dist/*
-python -m twine check packages/python/rare-agent-sdk-python/dist/*
+python -m twine check packages/agent/python/rare-agent-sdk-python/dist/*
+python -m twine check packages/platform/python/rare-platform-sdk-python/dist/*
 ```
 
 CI workflow:
@@ -55,22 +58,23 @@ CI workflow:
 Usage:
 
 - automatic publish on `main` only targets `rare-agent-sdk`
-- manual `workflow_dispatch` can publish `rare-agent-sdk`, `rare-identity-verifier`, or `rare-identity-core`
+- manual `workflow_dispatch` may be used for the Python packages you choose to publish from this repo
 - `rare-agent-sdk` is the primary public PyPI package; `rare-identity-protocol` stays in-repo and is not a normal release target
+- `rare-platform-sdk` is the primary public PyPI package for Python platform integrations
 - `rare-identity-verifier` and `rare-identity-core` are optional Python distributions for backend or self-hosted service use
 
 ## TypeScript Platform Packages
 
-Packages live under `packages/ts/rare-platform-kit-ts/packages/*`.
+Packages live under `packages/platform/ts/rare-platform-kit-ts/packages/*`.
 
 Build and test locally:
 
 ```bash
-(cd packages/ts/rare-platform-kit-ts && pnpm install --frozen-lockfile)
-(cd packages/ts/rare-platform-kit-ts && pnpm -r build)
-(cd packages/ts/rare-platform-kit-ts && pnpm -r lint)
-(cd packages/ts/rare-platform-kit-ts && pnpm -r typecheck)
-(cd packages/ts/rare-platform-kit-ts && pnpm -r test)
+(cd packages/platform/ts/rare-platform-kit-ts && pnpm install --frozen-lockfile)
+(cd packages/platform/ts/rare-platform-kit-ts && pnpm -r build)
+(cd packages/platform/ts/rare-platform-kit-ts && pnpm -r lint)
+(cd packages/platform/ts/rare-platform-kit-ts && pnpm -r typecheck)
+(cd packages/platform/ts/rare-platform-kit-ts && pnpm -r test)
 ```
 
 CI workflow:

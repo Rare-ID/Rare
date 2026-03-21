@@ -11,15 +11,18 @@ This document is the current integration contract for a third-party platform usi
   - auth challenge nonces
   - replay protection
   - issued platform sessions
-- TypeScript packages:
+- SDK options:
 
 ```bash
 pnpm add @rare-id/platform-kit-core @rare-id/platform-kit-client @rare-id/platform-kit-web
+pip install rare-platform-sdk
 ```
 
 You do not deploy these SDK packages to GCP. They run inside your own platform service.
 
 ## Minimal Wiring
+
+### TypeScript
 
 ```ts
 import { RareApiClient } from "@rare-id/platform-kit-client";
@@ -41,6 +44,30 @@ const kit = createRarePlatformKit({
   replayStore: new InMemoryReplayStore(),
   sessionStore: new InMemorySessionStore(),
 });
+```
+
+### Python
+
+```python
+from rare_platform_sdk import (
+    InMemoryChallengeStore,
+    InMemoryReplayStore,
+    InMemorySessionStore,
+    RareApiClient,
+    RarePlatformKitConfig,
+    create_rare_platform_kit,
+)
+
+rare_api_client = RareApiClient(rare_base_url="https://api.rareid.cc")
+kit = create_rare_platform_kit(
+    RarePlatformKitConfig(
+        aud="platform",
+        rare_api_client=rare_api_client,
+        challenge_store=InMemoryChallengeStore(),
+        replay_store=InMemoryReplayStore(),
+        session_store=InMemorySessionStore(),
+    )
+)
 ```
 
 `InMemory*Store` is only for local development. Production should use durable shared storage, typically Redis plus database-backed session persistence.

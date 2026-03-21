@@ -19,11 +19,12 @@ Current production API:
 
 Main workspace packages:
 
-- `packages/python/rare-identity-protocol-python`
-- `packages/python/rare-identity-verifier-python`
+- `packages/shared/python/rare-identity-protocol-python`
+- `packages/shared/python/rare-identity-verifier-python`
 - `services/rare-identity-core`
-- `packages/python/rare-agent-sdk-python`
-- `packages/ts/rare-platform-kit-ts`
+- `packages/agent/python/rare-agent-sdk-python`
+- `packages/platform/python/rare-platform-sdk-python`
+- `packages/platform/ts/rare-platform-kit-ts`
 
 ## Common Commands
 
@@ -33,14 +34,16 @@ Set up the Python workspace:
 python3.11 -m venv .venv
 source .venv/bin/activate
 python -m pip install -U pip setuptools wheel
-pip install -r ./packages/python/rare-identity-protocol-python/requirements-test.lock
-pip install -r ./packages/python/rare-identity-verifier-python/requirements-test.lock
-pip install -e "./packages/python/rare-identity-protocol-python[test]"
-pip install -e "./packages/python/rare-identity-verifier-python[test]"
+pip install -r ./packages/shared/python/rare-identity-protocol-python/requirements-test.lock
+pip install -r ./packages/shared/python/rare-identity-verifier-python/requirements-test.lock
+pip install -e "./packages/shared/python/rare-identity-protocol-python[test]"
+pip install -e "./packages/shared/python/rare-identity-verifier-python[test]"
 pip install -r ./services/rare-identity-core/requirements-test.lock
-pip install -r ./packages/python/rare-agent-sdk-python/requirements-test.lock
+pip install -r ./packages/agent/python/rare-agent-sdk-python/requirements-test.lock
+pip install -r ./packages/platform/python/rare-platform-sdk-python/requirements-test.lock
 pip install -e "./services/rare-identity-core[test]"
-pip install -e "./packages/python/rare-agent-sdk-python[test]"
+pip install -e "./packages/agent/python/rare-agent-sdk-python[test]"
+pip install -e "./packages/platform/python/rare-platform-sdk-python[test]"
 ```
 
 Run the full test suite:
@@ -59,11 +62,12 @@ uvicorn rare_api.main:app --reload --host 127.0.0.1 --port 8000
 Build packages:
 
 ```bash
-(cd packages/python/rare-identity-protocol-python && python -m build)
-(cd packages/python/rare-identity-verifier-python && python -m build)
+(cd packages/shared/python/rare-identity-protocol-python && python -m build)
+(cd packages/shared/python/rare-identity-verifier-python && python -m build)
 (cd services/rare-identity-core && python -m build)
-(cd packages/python/rare-agent-sdk-python && python -m build)
-(cd packages/ts/rare-platform-kit-ts && pnpm -r build)
+(cd packages/agent/python/rare-agent-sdk-python && python -m build)
+(cd packages/platform/python/rare-platform-sdk-python && python -m build)
+(cd packages/platform/ts/rare-platform-kit-ts && pnpm -r build)
 ```
 
 ## Agent CLI
@@ -122,13 +126,14 @@ Useful commands:
 ```bash
 python scripts/validate_rip_docs.py --strict
 python scripts/check_repo_hygiene.py
-python -m compileall packages/python/rare-identity-protocol-python packages/python/rare-identity-verifier-python services/rare-identity-core packages/python/rare-agent-sdk-python
+python -m compileall packages/shared/python/rare-identity-protocol-python packages/shared/python/rare-identity-verifier-python services/rare-identity-core packages/agent/python/rare-agent-sdk-python packages/platform/python/rare-platform-sdk-python
 ```
 
 ## Release Notes
 
 - Source code lives in `Rare-ID/Rare`
 - npm packages remain the main public install surface for the platform SDK
+- `rare-platform-sdk` is the main public PyPI package for Python platform integrations
 - `rare-agent-sdk` is the main public PyPI package for agents
 - `rare-identity-verifier` and `rare-identity-core` are optional manual-release Python packages
 - release process lives in `docs/release-guide.md`

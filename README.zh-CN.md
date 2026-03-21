@@ -61,13 +61,11 @@ Read https://www.rareid.cc/skill.md and follow the instructions to register Rare
 
 ### Platform 快速开始
 
-安装 TypeScript 平台侧包：
+TypeScript：
 
 ```bash
 pnpm add @rare-id/platform-kit-core @rare-id/platform-kit-client @rare-id/platform-kit-web
 ```
-
-创建一个最小的 Rare platform kit：
 
 ```ts
 import { RareApiClient } from "@rare-id/platform-kit-client";
@@ -91,10 +89,39 @@ const kit = createRarePlatformKit({
 });
 ```
 
+Python：
+
+```bash
+pip install rare-platform-sdk
+```
+
+```python
+from rare_platform_sdk import (
+    InMemoryChallengeStore,
+    InMemoryReplayStore,
+    InMemorySessionStore,
+    RareApiClient,
+    RarePlatformKitConfig,
+    create_rare_platform_kit,
+)
+
+rare_api_client = RareApiClient(rare_base_url="https://api.rareid.cc")
+kit = create_rare_platform_kit(
+    RarePlatformKitConfig(
+        aud="platform",
+        rare_api_client=rare_api_client,
+        challenge_store=InMemoryChallengeStore(),
+        replay_store=InMemoryReplayStore(),
+        session_store=InMemorySessionStore(),
+    )
+)
+```
+
 平台集成文档入口：
 
 - `FOR_PLATFORM.md`
-- `packages/ts/rare-platform-kit-ts/README.md`
+- `packages/platform/python/rare-platform-sdk-python/README.md`
+- `packages/platform/ts/rare-platform-kit-ts/README.md`
 
 ## 使用场景
 
@@ -105,11 +132,12 @@ const kit = createRarePlatformKit({
 
 ## 仓库结构
 
-- `packages/python/rare-identity-protocol-python/`：协议原语与签名输入
-- `packages/python/rare-identity-verifier-python/`：Python 校验工具
+- `packages/shared/python/rare-identity-protocol-python/`：协议原语与签名输入
+- `packages/shared/python/rare-identity-verifier-python/`：Python 校验工具
 - `services/rare-identity-core/`：Rare API 的 FastAPI 参考实现
-- `packages/python/rare-agent-sdk-python/`：Agent CLI 和本地 signer
-- `packages/ts/rare-platform-kit-ts/`：TypeScript 平台 SDK 源码
+- `packages/agent/python/rare-agent-sdk-python/`：Agent CLI 和本地 signer
+- `packages/platform/python/rare-platform-sdk-python/`：Python 平台 SDK 源码
+- `packages/platform/ts/rare-platform-kit-ts/`：TypeScript 平台 SDK 源码
 - `docs/rip/`：RIP 协议规范与测试向量
 - `skills/rare-agent/`：curl-first Agent skill
 - `skills/rare-agent-cli/`：CLI-first Agent skill
@@ -120,8 +148,9 @@ const kit = createRarePlatformKit({
 - `FOR_PLATFORM.md`：平台集成指南
 - `docs/rip/RIP_INDEX.md`：协议索引
 - `docs/release-guide.md`：发布流程
-- `packages/python/rare-agent-sdk-python/README.md`：Agent CLI 用法
-- `packages/ts/rare-platform-kit-ts/README.md`：Platform SDK 指南
+- `packages/agent/python/rare-agent-sdk-python/README.md`：Agent CLI 用法
+- `packages/platform/python/rare-platform-sdk-python/README.md`：Python 平台 SDK 指南
+- `packages/platform/ts/rare-platform-kit-ts/README.md`：TypeScript Platform SDK 指南
 
 ## 更多链接
 
@@ -140,14 +169,16 @@ const kit = createRarePlatformKit({
 python3.11 -m venv .venv
 source .venv/bin/activate
 python -m pip install -U pip setuptools wheel
-pip install -r ./packages/python/rare-identity-protocol-python/requirements-test.lock
-pip install -r ./packages/python/rare-identity-verifier-python/requirements-test.lock
-pip install -e "./packages/python/rare-identity-protocol-python[test]"
-pip install -e "./packages/python/rare-identity-verifier-python[test]"
+pip install -r ./packages/shared/python/rare-identity-protocol-python/requirements-test.lock
+pip install -r ./packages/shared/python/rare-identity-verifier-python/requirements-test.lock
+pip install -e "./packages/shared/python/rare-identity-protocol-python[test]"
+pip install -e "./packages/shared/python/rare-identity-verifier-python[test]"
 pip install -r ./services/rare-identity-core/requirements-test.lock
-pip install -r ./packages/python/rare-agent-sdk-python/requirements-test.lock
+pip install -r ./packages/agent/python/rare-agent-sdk-python/requirements-test.lock
+pip install -r ./packages/platform/python/rare-platform-sdk-python/requirements-test.lock
 pip install -e "./services/rare-identity-core[test]"
-pip install -e "./packages/python/rare-agent-sdk-python[test]"
+pip install -e "./packages/agent/python/rare-agent-sdk-python[test]"
+pip install -e "./packages/platform/python/rare-platform-sdk-python[test]"
 ```
 
 运行标准检查：
@@ -156,7 +187,7 @@ pip install -e "./packages/python/rare-agent-sdk-python[test]"
 python scripts/validate_rip_docs.py --strict
 python scripts/check_repo_hygiene.py
 ./scripts/test_all.sh
-python -m compileall packages/python/rare-identity-protocol-python packages/python/rare-identity-verifier-python services/rare-identity-core packages/python/rare-agent-sdk-python
+python -m compileall packages/shared/python/rare-identity-protocol-python packages/shared/python/rare-identity-verifier-python services/rare-identity-core packages/agent/python/rare-agent-sdk-python packages/platform/python/rare-platform-sdk-python
 ```
 
 ## 贡献

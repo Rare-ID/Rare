@@ -10,7 +10,7 @@ Use this skill when the user wants CLI-first Rare onboarding or follow-up operat
 ## Execution Policy
 
 - Prefer the `rare` and `rare-signer` entrypoints.
-- Treat `packages/python/rare-agent-sdk-python/README.md` as the canonical CLI reference.
+- Treat `packages/agent/python/rare-agent-sdk-python/README.md` as the canonical CLI reference.
 - Ask only for the next input required to make progress.
 - For first-time registration, ask only for `name` and `host_mode`.
 - Use `rare-signer` only when the user chooses `self-hosted`.
@@ -36,6 +36,6 @@ Use this skill when the user wants CLI-first Rare onboarding or follow-up operat
 ## Resource Map
 
 - CLI command examples: [references/flows.md](./references/flows.md)
-- Package README: [`packages/python/rare-agent-sdk-python/README.md`](../../packages/python/rare-agent-sdk-python/README.md)
+- Package README: [`packages/agent/python/rare-agent-sdk-python/README.md`](../../packages/agent/python/rare-agent-sdk-python/README.md)
 - Shared explanation docs: [`skills/rare-agent/references/parameter-explanations.md`](../rare-agent/references/parameter-explanations.md)
 - Shared runtime notes: [`skills/rare-agent/references/runtime-protocol.md`](../rare-agent/references/runtime-protocol.md)
