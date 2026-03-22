@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "packages/agent/python/rare-agent-sdk-python/**"
+      - "packages/platform/python/rare-platform-sdk-python/**"
       - ".github/workflows/publish-python-packages.yml"
   workflow_dispatch:
     inputs:
@@ -63,7 +64,7 @@ jobs:
           pkg='${{ matrix.package.name }}'
           if [ "${{ github.event_name }}" = "push" ]; then
             case "$pkg" in
-              rare-agent-sdk)
+              rare-agent-sdk|rare-platform-sdk)
                 echo "selected=true" >> "$GITHUB_OUTPUT"
                 ;;
               *)
@@ -118,7 +119,7 @@ jobs:
           pkg='${{ matrix.package.name }}'
           if [ "${{ github.event_name }}" = "push" ]; then
             case "$pkg" in
-              rare-agent-sdk)
+              rare-agent-sdk|rare-platform-sdk)
                 echo "selected=true" >> "$GITHUB_OUTPUT"
                 ;;
               *)

@@ -57,7 +57,7 @@ CI workflow:
 
 Usage:
 
-- automatic publish on `main` only targets `rare-agent-sdk`
+- automatic publish on `main` targets `rare-agent-sdk` and `rare-platform-sdk`
 - manual `workflow_dispatch` may be used for the Python packages you choose to publish from this repo
 - `rare-agent-sdk` is the primary public PyPI package; `rare-identity-protocol` stays in-repo and is not a normal release target
 - `rare-platform-sdk` is the primary public PyPI package for Python platform integrations
