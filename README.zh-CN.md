@@ -86,6 +86,8 @@ const kit = createRarePlatformKit({
   challengeStore: new InMemoryChallengeStore(),
   replayStore: new InMemoryReplayStore(),
   sessionStore: new InMemorySessionStore(),
+  // 验证 hosted-signer delegation 时需要这个公钥。
+  // rareSignerPublicKeyB64: "<rare signer Ed25519 public x>",
 });
 ```
 
@@ -113,15 +115,27 @@ kit = create_rare_platform_kit(
         challenge_store=InMemoryChallengeStore(),
         replay_store=InMemoryReplayStore(),
         session_store=InMemorySessionStore(),
+        # 验证 hosted-signer delegation 时需要这个公钥。
+        # rare_signer_public_key_b64="<rare signer Ed25519 public x>",
     )
 )
 ```
 
 平台集成文档入口：
 
-- `FOR_PLATFORM.md`
+- `docs/platform/README.md`
+- `docs/platform/typescript.md`
+- `docs/platform/python.md`
 - `packages/platform/python/rare-platform-sdk-python/README.md`
 - `packages/platform/ts/rare-platform-kit-ts/README.md`
+
+说明：
+
+- 生产环境 Rare API base URL 是 `https://api.rareid.cc`，不要追加 `/rare`。
+- 本地开发时应使用你实际挂载的 Rare Core base URL，例如 `http://127.0.0.1:8000` 或 `http://127.0.0.1:8000/rare`。
+- `docs/platform/README.md` 是平台文档的主索引。
+- `docs/platform/typescript.md` 是 TypeScript 版本主指南。
+- `docs/platform/python.md` 是 Python 版本主指南。
 
 ## 使用场景
 
@@ -145,7 +159,9 @@ kit = create_rare_platform_kit(
 
 ## 文档入口
 
-- `FOR_PLATFORM.md`：平台集成指南
+- `docs/platform/README.md`：平台文档索引
+- `docs/platform/typescript.md`：TypeScript 平台集成指南
+- `docs/platform/python.md`：Python 平台集成指南
 - `docs/rip/RIP_INDEX.md`：协议索引
 - `docs/release-guide.md`：发布流程
 - `packages/agent/python/rare-agent-sdk-python/README.md`：Agent CLI 用法
