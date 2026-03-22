@@ -30,7 +30,9 @@ export class RedisChallengeStore implements ChallengeStore {
 
   async consume(nonce: string): Promise<AuthChallenge | null> {
     const key = `${this.prefix}:${nonce}`;
-    const getdel = (this.redis as Redis & { getdel?: (key: string) => Promise<string | null> }).getdel;
+    const getdel = (
+      this.redis as Redis & { getdel?: (key: string) => Promise<string | null> }
+    ).getdel;
     if (typeof getdel === "function") {
       const payload = await getdel.call(this.redis, key);
       return payload ? (JSON.parse(payload) as AuthChallenge) : null;
