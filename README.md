@@ -86,6 +86,8 @@ const kit = createRarePlatformKit({
   challengeStore: new InMemoryChallengeStore(),
   replayStore: new InMemoryReplayStore(),
   sessionStore: new InMemorySessionStore(),
+  // Required when you verify hosted-signer delegations.
+  // rareSignerPublicKeyB64: "<rare signer Ed25519 public x>",
 });
 ```
 
@@ -113,15 +115,27 @@ kit = create_rare_platform_kit(
         challenge_store=InMemoryChallengeStore(),
         replay_store=InMemoryReplayStore(),
         session_store=InMemorySessionStore(),
+        # Required when you verify hosted-signer delegations.
+        # rare_signer_public_key_b64="<rare signer Ed25519 public x>",
     )
 )
 ```
 
 Platform integration documentation starts here:
 
-- `FOR_PLATFORM.md`
+- `docs/platform/README.md`
+- `docs/platform/typescript.md`
+- `docs/platform/python.md`
 - `packages/platform/python/rare-platform-sdk-python/README.md`
 - `packages/platform/ts/rare-platform-kit-ts/README.md`
+
+Notes:
+
+- Production Rare API base URL is `https://api.rareid.cc` and does not append `/rare`.
+- Local development should use the exact mounted Rare Core base URL, for example `http://127.0.0.1:8000` or `http://127.0.0.1:8000/rare`.
+- `docs/platform/README.md` is the canonical platform docs index.
+- `docs/platform/typescript.md` is the canonical TypeScript guide.
+- `docs/platform/python.md` is the canonical Python guide.
 
 ## Use Cases
 
@@ -145,7 +159,9 @@ Platform integration documentation starts here:
 
 ## Documentation
 
-- `FOR_PLATFORM.md`: platform integration guide
+- `docs/platform/README.md`: platform docs index
+- `docs/platform/typescript.md`: TypeScript platform integration guide
+- `docs/platform/python.md`: Python platform integration guide
 - `docs/rip/RIP_INDEX.md`: protocol index
 - `docs/release-guide.md`: package release workflow
 - `packages/agent/python/rare-agent-sdk-python/README.md`: Agent CLI usage
