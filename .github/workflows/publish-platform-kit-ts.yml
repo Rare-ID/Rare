@@ -89,6 +89,11 @@ jobs:
         run: |
           for pkg in packages/*; do
             name="$(node -p "require('./$pkg/package.json').name")"
+            private="$(node -p "Boolean(require('./$pkg/package.json').private)")"
+            if [ "${private}" = "true" ]; then
+              echo "Skipping ${name}; package is private."
+              continue
+            fi
             version="$(node -p "require('./$pkg/package.json').version")"
             if npm view "${name}@${version}" version --registry=https://registry.npmjs.org >/dev/null 2>&1; then
               echo "Skipping ${name}@${version}; already published."
