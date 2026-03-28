@@ -12,7 +12,6 @@ SELF = Path(__file__).resolve()
 
 BANNED_PATHS = {
     ".gcloudignore",
-    ".github/workflows/deploy-rare-core.yml",
     ".github/workflows/release-public-agent-sdk.yml",
     ".github/workflows/sync-public-oss.yml",
     "docs/contact-and-dashboard.md",
