@@ -1,4 +1,7 @@
-import type { RareApiClient } from "@rare-id/platform-kit-client";
+import {
+  type RareApiClient,
+  extractRareSignerPublicKeyB64,
+} from "@rare-id/platform-kit-client";
 import {
   type IdentityLevel,
   type KeyResolver,
@@ -137,6 +140,7 @@ export function createRarePlatformKit(
   const keyCache: Record<string, RareJwk> = config.initialJwks
     ? parseRareJwks(config.initialJwks)
     : {};
+  let rareSignerPublicKeyB64 = config.rareSignerPublicKeyB64;
 
   const resolveIdentityKey: KeyResolver = async (kid) => {
     if (config.keyResolver) {
@@ -152,6 +156,25 @@ export function createRarePlatformKit(
     const jwks = await config.rareApiClient.getJwks();
     Object.assign(keyCache, parseRareJwks(jwks));
     return keyCache[kid] ?? null;
+  };
+
+  const resolveRareSignerPublicKey = async (): Promise<string | undefined> => {
+    if (rareSignerPublicKeyB64) {
+      return rareSignerPublicKeyB64;
+    }
+    if (config.initialJwks) {
+      try {
+        rareSignerPublicKeyB64 = extractRareSignerPublicKeyB64(config.initialJwks);
+        return rareSignerPublicKeyB64;
+      } catch {
+        // Fall through to remote fetch when available.
+      }
+    }
+    if (!config.rareApiClient) {
+      return undefined;
+    }
+    rareSignerPublicKeyB64 = await config.rareApiClient.getRareSignerPublicKeyB64();
+    return rareSignerPublicKeyB64;
   };
 
   return {
@@ -197,7 +220,7 @@ export function createRarePlatformKit(
       const delegation = await verifyDelegationToken(input.delegationToken, {
         expectedAud: config.aud,
         requiredScope: "login",
-        rareSignerPublicKeyB64: config.rareSignerPublicKeyB64,
+        rareSignerPublicKeyB64: await resolveRareSignerPublicKey(),
         currentTs: now,
         clockSkewSeconds,
       });

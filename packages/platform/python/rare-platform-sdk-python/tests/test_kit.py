@@ -125,6 +125,55 @@ def setup_kit():
     return kit, identity_private_key, signer_private_key
 
 
+def setup_kit_with_rare_api_client():
+    identity_private_key = Ed25519PrivateKey.generate()
+    signer_private_key = Ed25519PrivateKey.generate()
+    identity_public_key = public_key_to_b64(identity_private_key.public_key())
+    signer_public_key = public_key_to_b64(signer_private_key.public_key())
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if str(request.url) == "https://rare.example/.well-known/rare-keys.json":
+            return httpx.Response(
+                200,
+                json={
+                    "issuer": "rare",
+                    "keys": [
+                        {
+                            "kid": "rare-k1",
+                            "kty": "OKP",
+                            "crv": "Ed25519",
+                            "x": identity_public_key,
+                            "rare_role": "identity",
+                        },
+                        {
+                            "kid": "rare-signer-k1",
+                            "kty": "OKP",
+                            "crv": "Ed25519",
+                            "x": signer_public_key,
+                            "rare_role": "delegation",
+                        },
+                    ],
+                },
+            )
+        raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+    http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    rare_api_client = RareApiClient(
+        rare_base_url="https://rare.example",
+        http_client=http_client,
+    )
+    kit = create_rare_platform_kit(
+        RarePlatformKitConfig(
+            aud="platform",
+            challenge_store=InMemoryChallengeStore(),
+            replay_store=InMemoryReplayStore(),
+            session_store=InMemorySessionStore(),
+            rare_api_client=rare_api_client,
+        )
+    )
+    return kit, identity_private_key, signer_private_key, rare_api_client, http_client
+
+
 def create_auth_payload(kit, identity_private_key, signer_private_key, *, agent_id: str, delegation_jti: str):
     challenge = run(kit.issue_challenge("platform"))
     session_private_b64, session_pubkey = generate_ed25519_keypair()
@@ -239,6 +288,35 @@ def test_complete_auth_rejects_delegation_replay() -> None:
             )
         )
     )
+
+
+def test_complete_auth_hydrates_hosted_signer_key_from_rare_api() -> None:
+    kit, identity_private_key, signer_private_key, rare_api_client, http_client = (
+        setup_kit_with_rare_api_client()
+    )
+    agent_id = new_agent_id()
+    auth = create_auth_payload(
+        kit, identity_private_key, signer_private_key, agent_id=agent_id, delegation_jti="jti-jwks-1"
+    )
+
+    try:
+        result = run(
+            kit.complete_auth(
+                AuthCompleteInput(
+                    nonce=auth["challenge"].nonce,
+                    agent_id=agent_id,
+                    session_pubkey=auth["session_pubkey"],
+                    delegation_token=auth["delegation"],
+                    signature_by_session=auth["signature_by_session"],
+                    public_identity_attestation=auth["public_identity"],
+                )
+            )
+        )
+    finally:
+        run(http_client.aclose())
+        run(rare_api_client.aclose())
+
+    assert result.agent_id == agent_id
 
     challenge = run(kit.issue_challenge("platform"))
     signature = sign_detached(

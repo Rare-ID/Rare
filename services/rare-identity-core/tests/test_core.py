@@ -537,6 +537,7 @@ def test_public_attestation_refresh_and_identity_library(env: dict) -> None:
     body = keys.json()
     assert body["issuer"] == "rare"
     assert len(body["keys"]) >= 1
+    assert {item["rare_role"] for item in body["keys"]} >= {"identity", "delegation"}
 
     attestation = refresh.json()["public_identity_attestation"]
     verified = verify_identity_attestation(attestation, key_resolver=service.get_identity_public_key)

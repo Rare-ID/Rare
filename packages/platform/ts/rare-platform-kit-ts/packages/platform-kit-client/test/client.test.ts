@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { RareApiClient } from "../src/index";
+import {
+  RareApiClient,
+  extractRareSignerPublicKeyB64,
+} from "../src/index";
 
 describe("RareApiClient", () => {
   it("sends expected request for platform register challenge", async () => {
@@ -58,5 +61,28 @@ describe("RareApiClient", () => {
     await expect(client.getJwks()).rejects.toThrow(
       "rare api error 400: bad request",
     );
+  });
+
+  it("extracts the hosted signer key from JWKS", async () => {
+    expect(
+      extractRareSignerPublicKeyB64({
+        keys: [
+          {
+            kid: "rare-identity-k1",
+            kty: "OKP",
+            crv: "Ed25519",
+            x: "identity-key",
+            rare_role: "identity",
+          },
+          {
+            kid: "rare-signer-k1",
+            kty: "OKP",
+            crv: "Ed25519",
+            x: "delegation-key",
+            rare_role: "delegation",
+          },
+        ],
+      }),
+    ).toBe("delegation-key");
   });
 });

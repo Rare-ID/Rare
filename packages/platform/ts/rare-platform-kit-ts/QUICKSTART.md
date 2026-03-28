@@ -26,7 +26,8 @@ const kit = createRarePlatformKit({
   challengeStore: new InMemoryChallengeStore(),
   replayStore: new InMemoryReplayStore(),
   sessionStore: new InMemorySessionStore(),
-  // hosted-signer delegation verification requires this key
+  // Optional override. With rareApiClient configured, the kit can auto-discover
+  // the hosted delegation signer from Rare JWKS.
   // rareSignerPublicKeyB64: "<rare signer Ed25519 public x>",
 });
 ```
