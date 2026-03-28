@@ -41,7 +41,6 @@ out/
 
 # local private ops assets
 .gcloudignore
-.github/workflows/deploy-rare-core.yml
 docs/contact-and-dashboard.md
 docs/deployment-gcp.md
 docs/ops-inventory.md
