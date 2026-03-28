@@ -2636,6 +2636,42 @@ def test_sqlite_state_store_persists_agents_and_audit(tmp_path: Path) -> None:
         assert audit_count == (1,)
 
 
+def test_self_register_tolerates_snapshot_mutation_during_persist(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    keyring_file = tmp_path / "race-keyring.json"
+    sqlite_file = tmp_path / "race-state.sqlite3"
+    provider = FileKeyProvider(path=keyring_file)
+    cipher_key = base64.urlsafe_b64encode(b"1" * 32).decode("ascii")
+    cipher = LocalAesGcmHostedKeyCipher(key_b64=cipher_key)
+    service = RareService(
+        allow_local_upgrade_shortcuts=True,
+        key_provider=provider,
+        state_store=SqliteStateStore(path=sqlite_file),
+        hosted_key_cipher=cipher,
+    )
+    client = TestClient(create_app(service))
+
+    original_encrypt_text = service.hosted_key_cipher.encrypt_text
+    injected_key = False
+
+    def encrypt_and_mutate(value: str) -> str:
+        nonlocal injected_key
+        if not injected_key:
+            injected_key = True
+            private_key, public_key = generate_ed25519_keypair()
+            service.hosted_agent_private_keys[public_key] = load_private_key(private_key)
+        return original_encrypt_text(value)
+
+    monkeypatch.setattr(service.hosted_key_cipher, "encrypt_text", encrypt_and_mutate)
+
+    response = client.post("/v1/agents/self_register", json={"name": "snapshot-race"})
+
+    assert response.status_code == 200
+    assert response.json()["profile"]["name"] == "snapshot-race"
+    assert injected_key is True
+
+
 def test_sqlite_state_store_syncs_between_instances(tmp_path: Path) -> None:
     sqlite_file = tmp_path / "shared-state.sqlite3"
     keyring_file = tmp_path / "shared-keyring.json"
