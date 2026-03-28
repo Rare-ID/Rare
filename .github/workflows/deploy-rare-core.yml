@@ -2,31 +2,19 @@ name: deploy-rare-core
 
 on:
   workflow_dispatch:
-    inputs:
-      environment:
-        description: Target environment
-        required: true
-        default: staging
-        type: choice
-        options:
-          - staging
-          - prod
-  push:
-    branches:
-      - main
-    paths:
-      - "services/rare-identity-core/**"
-      - ".github/workflows/deploy-rare-core.yml"
+
+concurrency:
+  group: deploy-rare-core-prod
+  cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || 'staging' }}
+    environment: prod
     permissions:
       contents: read
       id-token: write
     env:
-      TARGET_ENV: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || 'staging' }}
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       GCP_REGION: ${{ vars.GCP_REGION }}
       CLOUD_RUN_SERVICE: ${{ vars.CLOUD_RUN_SERVICE }}
@@ -46,6 +34,15 @@ jobs:
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
 
+      - name: Validate Deploy Configuration
+        run: |
+          test -n "${GCP_PROJECT_ID}"
+          test -n "${GCP_REGION}"
+          test -n "${CLOUD_RUN_SERVICE}"
+          test -n "${ARTIFACT_REGISTRY_REPOSITORY}"
+          test -n "${WORKLOAD_IDENTITY_PROVIDER}"
+          test -n "${SERVICE_ACCOUNT_EMAIL}"
+
       - name: Configure Docker Auth
         run: gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
 
@@ -64,3 +61,7 @@ jobs:
             --region "${GCP_REGION}" \
             --image "${IMAGE_URI}" \
             --quiet
+
+      - name: Deployment Summary
+        run: |
+          echo "Deployed ${IMAGE_URI} to ${CLOUD_RUN_SERVICE} in ${GCP_PROJECT_ID}/${GCP_REGION}"

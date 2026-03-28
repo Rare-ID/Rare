@@ -88,5 +88,6 @@ Usage:
 
 ## Notes
 
-- Keep deploy infrastructure and hosted-service operations outside this public repo.
+- Rare Core service deploys are manual via `.github/workflows/deploy-rare-core.yml`.
+- The current GitHub deploy workflow is wired for production only; do not assume a separate staging service exists unless staging-specific GCP resources and GitHub environment configuration are added.
 - If a release changes protocol behavior, update the relevant RIP docs and tests in the same change.
