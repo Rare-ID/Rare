@@ -164,7 +164,9 @@ export function createRarePlatformKit(
     }
     if (config.initialJwks) {
       try {
-        rareSignerPublicKeyB64 = extractRareSignerPublicKeyB64(config.initialJwks);
+        rareSignerPublicKeyB64 = extractRareSignerPublicKeyB64(
+          config.initialJwks,
+        );
         return rareSignerPublicKeyB64;
       } catch {
         // Fall through to remote fetch when available.
@@ -173,7 +175,8 @@ export function createRarePlatformKit(
     if (!config.rareApiClient) {
       return undefined;
     }
-    rareSignerPublicKeyB64 = await config.rareApiClient.getRareSignerPublicKeyB64();
+    rareSignerPublicKeyB64 =
+      await config.rareApiClient.getRareSignerPublicKeyB64();
     return rareSignerPublicKeyB64;
   };
 

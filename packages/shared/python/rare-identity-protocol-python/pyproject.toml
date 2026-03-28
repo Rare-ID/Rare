@@ -16,7 +16,7 @@ keywords = ["rare", "identity", "protocol", "ed25519", "jws"]
 
 [project.optional-dependencies]
 test = [
-  "pytest>=8.2.0",
+  "pytest>=8.2.0,<8.3.0",
 ]
 
 [project.urls]
