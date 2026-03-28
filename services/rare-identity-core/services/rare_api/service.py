@@ -4,7 +4,8 @@ import hashlib
 import hmac
 import json
 import secrets
-from collections.abc import Callable
+from copy import deepcopy
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -476,7 +477,7 @@ class RareService:
         serializer = value_serializer or (lambda item: item)
         payload: list[dict[str, Any]] = []
         if hasattr(value, "snapshot_entries"):
-            for key, item, expires_at in value.snapshot_entries():  # type: ignore[attr-defined]
+            for key, item, expires_at in list(value.snapshot_entries()):  # type: ignore[attr-defined]
                 payload.append(
                     {
                         "key": RareService._encode_key(key),
@@ -485,7 +486,7 @@ class RareService:
                     }
                 )
             return payload
-        for key, entry in value._entries.items():  # type: ignore[attr-defined]
+        for key, entry in list(value._entries.items()):  # type: ignore[attr-defined]
             payload.append(
                 {
                     "key": RareService._encode_key(key),
@@ -499,12 +500,16 @@ class RareService:
     def _serialize_expiring_set(value: ExpiringSet[Any]) -> list[dict[str, Any]]:
         payload: list[dict[str, Any]] = []
         if hasattr(value, "snapshot_entries"):
-            for key, expires_at in value.snapshot_entries():  # type: ignore[attr-defined]
+            for key, expires_at in list(value.snapshot_entries()):  # type: ignore[attr-defined]
                 payload.append({"key": RareService._encode_key(key), "expires_at": expires_at})
             return payload
-        for key, entry in value._store._entries.items():  # type: ignore[attr-defined]
+        for key, entry in list(value._store._entries.items()):  # type: ignore[attr-defined]
             payload.append({"key": RareService._encode_key(key), "expires_at": entry.expires_at})
         return payload
+
+    @staticmethod
+    def _snapshot_mapping_items(mapping: Mapping[Any, Any]) -> list[tuple[Any, Any]]:
+        return list(mapping.items())
 
     @staticmethod
     def _load_expiring_map(
@@ -534,21 +539,27 @@ class RareService:
             )
 
     def _serialize_snapshot(self) -> dict[str, Any]:
+        agents = self._snapshot_mapping_items(self.agents)
+        hosted_agent_private_keys = self._snapshot_mapping_items(self.hosted_agent_private_keys)
+        hosted_management_tokens = self._snapshot_mapping_items(self.hosted_management_tokens)
+        identity_profiles = self._snapshot_mapping_items(self.identity_profiles)
+        platforms = self._snapshot_mapping_items(self.platforms)
+        platform_events = self._snapshot_mapping_items(self.platform_events)
         return {
-            "agents": {agent_id: asdict(record) for agent_id, record in self.agents.items()},
+            "agents": {agent_id: asdict(record) for agent_id, record in agents},
             "hosted_agent_private_keys": {
                 agent_id: self.hosted_key_cipher.encrypt_text(self._private_key_to_b64(private_key))
-                for agent_id, private_key in self.hosted_agent_private_keys.items()
+                for agent_id, private_key in hosted_agent_private_keys
             },
             "hosted_management_tokens": {
-                agent_id: asdict(record) for agent_id, record in self.hosted_management_tokens.items()
+                agent_id: asdict(record) for agent_id, record in hosted_management_tokens
             },
-            "name_change_events": self.name_change_events,
-            "identity_profiles": {agent_id: asdict(record) for agent_id, record in self.identity_profiles.items()},
-            "identity_subscriptions": self.identity_subscriptions,
-            "platforms": {platform_aud: asdict(record) for platform_aud, record in self.platforms.items()},
+            "name_change_events": deepcopy(self.name_change_events),
+            "identity_profiles": {agent_id: asdict(record) for agent_id, record in identity_profiles},
+            "identity_subscriptions": deepcopy(self.identity_subscriptions),
+            "platforms": {platform_aud: asdict(record) for platform_aud, record in platforms},
             "platform_events": {
-                self._encode_key(event_key): asdict(record) for event_key, record in self.platform_events.items()
+                self._encode_key(event_key): asdict(record) for event_key, record in platform_events
             },
             "platform_register_challenges": self._serialize_expiring_map(
                 self.platform_register_challenges,
