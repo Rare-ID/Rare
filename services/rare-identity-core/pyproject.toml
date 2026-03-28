@@ -24,7 +24,7 @@ Issues = "https://github.com/Rare-ID/Rare/issues"
 
 [project.optional-dependencies]
 test = [
-  "pytest>=8.2.0",
+  "pytest>=8.2.0,<8.3.0",
 ]
 storage = [
   "psycopg[binary]>=3.2.0",
