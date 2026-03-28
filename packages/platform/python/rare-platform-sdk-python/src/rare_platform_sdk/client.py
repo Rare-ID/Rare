@@ -40,6 +40,9 @@ class RareApiClient:
     async def get_jwks(self) -> dict[str, Any]:
         return await self._request_json("GET", "/.well-known/rare-keys.json")
 
+    async def get_rare_signer_public_key_b64(self) -> str:
+        return extract_rare_signer_public_key_b64_from_jwks(await self.get_jwks())
+
     async def issue_platform_register_challenge(
         self, *, platform_aud: str, domain: str
     ) -> dict[str, Any]:
@@ -106,3 +109,30 @@ class RareApiClient:
         if not isinstance(payload, dict):
             raise RareApiClientError("expected JSON object response")
         return payload
+
+
+def extract_rare_signer_public_key_b64_from_jwks(jwks: dict[str, Any]) -> str:
+    keys = jwks.get("keys")
+    if not isinstance(keys, list):
+        raise RareApiClientError("invalid JWKS payload")
+
+    for item in keys:
+        if not isinstance(item, dict):
+            continue
+        if item.get("rare_role") == "delegation":
+            x = item.get("x")
+            if isinstance(x, str) and x:
+                return x
+
+    fallback: list[str] = []
+    for item in keys:
+        if not isinstance(item, dict):
+            continue
+        kid = item.get("kid")
+        x = item.get("x")
+        if isinstance(kid, str) and "rare-signer" in kid and isinstance(x, str) and x:
+            fallback.append(x)
+    if len(fallback) == 1:
+        return fallback[0]
+
+    raise RareApiClientError("rare signer key not present in JWKS")

@@ -23,6 +23,8 @@ from rare_identity_protocol import (
 from rare_identity_verifier import parse_rare_jwks, verify_delegation_token, verify_identity_attestation
 
 from rare_platform_sdk.client import RareApiClient
+from rare_platform_sdk.client import RareApiClientError
+from rare_platform_sdk.client import extract_rare_signer_public_key_b64_from_jwks
 from rare_platform_sdk.types import (
     AuthChallenge,
     AuthCompleteInput,
@@ -95,11 +97,16 @@ class _RarePlatformKitImpl:
         self._key_cache = (
             parse_rare_jwks(config.initial_jwks) if config.initial_jwks is not None else {}
         )
-        self._rare_signer_public_key = (
-            load_public_key(config.rare_signer_public_key_b64)
-            if config.rare_signer_public_key_b64
-            else None
-        )
+        self._rare_signer_public_key = None
+        if config.rare_signer_public_key_b64:
+            self._rare_signer_public_key = load_public_key(config.rare_signer_public_key_b64)
+        elif config.initial_jwks is not None:
+            try:
+                self._rare_signer_public_key = load_public_key(
+                    extract_rare_signer_public_key_b64_from_jwks(config.initial_jwks)
+                )
+            except RareApiClientError:
+                self._rare_signer_public_key = None
 
     def _lookup_identity_key(self, kid: str) -> Ed25519PublicKey | None:
         if self._config.key_resolver is not None:
@@ -112,6 +119,12 @@ class _RarePlatformKitImpl:
         if self._key_cache:
             return
         self._key_cache.update(parse_rare_jwks(await self._rare_api_client.get_jwks()))
+
+    async def _hydrate_rare_signer_public_key(self) -> None:
+        if self._rare_signer_public_key is not None or self._rare_api_client is None:
+            return
+        signer_b64 = await self._rare_api_client.get_rare_signer_public_key_b64()
+        self._rare_signer_public_key = load_public_key(signer_b64)
 
     async def issue_challenge(self, aud: str | None = None) -> AuthChallenge:
         issued_at = now_ts()
@@ -143,6 +156,8 @@ class _RarePlatformKitImpl:
             input.signature_by_session,
             load_public_key(input.session_pubkey),
         )
+
+        await self._hydrate_rare_signer_public_key()
 
         delegation = verify_delegation_token(
             input.delegation_token,

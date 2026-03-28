@@ -33,7 +33,8 @@ const kit = createRarePlatformKit({
   challengeStore: new InMemoryChallengeStore(),
   replayStore: new InMemoryReplayStore(),
   sessionStore: new InMemorySessionStore(),
-  // Required when you verify hosted-signer delegations.
+  // Optional override. When rareApiClient is configured, the kit can
+  // auto-discover the hosted delegation signer from Rare JWKS.
   // rareSignerPublicKeyB64: "<rare signer Ed25519 public x>",
 });
 ```
@@ -95,6 +96,14 @@ Every platform integration needs:
 Hosted-signer delegations require the Rare signer public key:
 
 - `rareSignerPublicKeyB64`
+
+If `rareApiClient` is configured, the TypeScript kit can auto-discover this key
+from `GET /.well-known/rare-keys.json`.
+
+Set `rareSignerPublicKeyB64` explicitly only when:
+
+- you want to pin the Rare signer key manually
+- you verify offline without a Rare API client
 
 If you only verify self-hosted delegations, that extra signer key is not required.
 

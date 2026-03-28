@@ -7,6 +7,7 @@ import httpx
 import pytest
 
 from rare_platform_sdk import RareApiClient
+from rare_platform_sdk.client import extract_rare_signer_public_key_b64_from_jwks
 
 
 def run(coro):
@@ -70,3 +71,26 @@ def test_client_raises_rich_errors() -> None:
     finally:
         run(http_client.aclose())
         run(client.aclose())
+
+
+def test_extracts_hosted_signer_key_from_jwks() -> None:
+    assert extract_rare_signer_public_key_b64_from_jwks(
+        {
+            "keys": [
+                {
+                    "kid": "rare-identity-k1",
+                    "kty": "OKP",
+                    "crv": "Ed25519",
+                    "x": "identity-key",
+                    "rare_role": "identity",
+                },
+                {
+                    "kid": "rare-signer-k1",
+                    "kty": "OKP",
+                    "crv": "Ed25519",
+                    "x": "delegation-key",
+                    "rare_role": "delegation",
+                },
+            ]
+        }
+    ) == "delegation-key"

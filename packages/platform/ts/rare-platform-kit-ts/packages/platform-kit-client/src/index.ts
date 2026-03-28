@@ -26,7 +26,39 @@ export interface JwksResponse {
     crv: string;
     x: string;
     retire_at?: number;
+    rare_role?: string;
   }>;
+}
+
+export function extractRareSignerPublicKeyB64(jwks: {
+  keys?: Array<Record<string, unknown>>;
+}): string {
+  if (!Array.isArray(jwks.keys)) {
+    throw new Error("invalid JWKS payload");
+  }
+
+  const delegation = jwks.keys.find((item) => {
+    return (
+      typeof item?.rare_role === "string" && item.rare_role === "delegation"
+    );
+  });
+  if (typeof delegation?.x === "string" && delegation.x.length > 0) {
+    return delegation.x;
+  }
+
+  const fallback = jwks.keys.filter((item) => {
+    return (
+      typeof item?.kid === "string" &&
+      item.kid.includes("rare-signer") &&
+      typeof item.x === "string" &&
+      item.x.length > 0
+    );
+  });
+  if (fallback.length === 1) {
+    return String(fallback[0].x);
+  }
+
+  throw new Error("rare signer key not present in JWKS");
 }
 
 export class RareApiClient {
@@ -42,6 +74,10 @@ export class RareApiClient {
 
   async getJwks(): Promise<JwksResponse> {
     return this.requestJson("GET", "/.well-known/rare-keys.json");
+  }
+
+  async getRareSignerPublicKeyB64(): Promise<string> {
+    return extractRareSignerPublicKeyB64(await this.getJwks());
   }
 
   async issuePlatformRegisterChallenge(input: {

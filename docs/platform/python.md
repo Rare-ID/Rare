@@ -32,7 +32,8 @@ kit = create_rare_platform_kit(
         challenge_store=InMemoryChallengeStore(),
         replay_store=InMemoryReplayStore(),
         session_store=InMemorySessionStore(),
-        # Required when you verify hosted-signer delegations.
+        # Optional override. When rare_api_client is configured, the kit can
+        # auto-discover the hosted delegation signer from Rare JWKS.
         # rare_signer_public_key_b64="<rare signer Ed25519 public x>",
     )
 )
@@ -110,6 +111,14 @@ Every platform integration needs:
 Hosted-signer delegations require the Rare signer public key:
 
 - `rare_signer_public_key_b64`
+
+If `rare_api_client` is configured, the Python kit can auto-discover this key
+from `GET /.well-known/rare-keys.json`.
+
+Set `rare_signer_public_key_b64` explicitly only when:
+
+- you want to pin the Rare signer key manually
+- you verify offline without a Rare API client
 
 If you only verify self-hosted delegations, that extra signer key is not required.
 

@@ -47,6 +47,55 @@ async function setupKit() {
   return { kit, identityPriv, signerPriv };
 }
 
+async function setupKitWithRareApiClient() {
+  const [
+    { privateKey: identityPriv, publicKey: identityPub },
+    { privateKey: signerPriv, publicKey: signerPub },
+  ] = await Promise.all([generateKeyPair("EdDSA"), generateKeyPair("EdDSA")]);
+
+  const identityJwk = await exportJWK(identityPub);
+  const signerJwk = await exportJWK(signerPub);
+
+  const challengeStore = new InMemoryChallengeStore();
+  const replayStore = new InMemoryReplayStore();
+  const sessionStore = new InMemorySessionStore();
+
+  const kit = createRarePlatformKit({
+    aud: "platform",
+    challengeStore,
+    replayStore,
+    sessionStore,
+    rareApiClient: {
+      async getJwks() {
+        return {
+          issuer: "rare",
+          keys: [
+            {
+              kid: "rare-k1",
+              kty: "OKP",
+              crv: "Ed25519",
+              x: String(identityJwk.x),
+              rare_role: "identity",
+            },
+            {
+              kid: "rare-signer-k1",
+              kty: "OKP",
+              crv: "Ed25519",
+              x: String(signerJwk.x),
+              rare_role: "delegation",
+            },
+          ],
+        };
+      },
+      async getRareSignerPublicKeyB64() {
+        return String(signerJwk.x);
+      },
+    } as never,
+  });
+
+  return { kit, identityPriv, signerPriv };
+}
+
 async function createAuthPayload(args: {
   kit: ReturnType<typeof createRarePlatformKit>;
   signerPriv: CryptoKey;
@@ -217,6 +266,34 @@ describe("RarePlatformKit", () => {
         publicIdentityAttestation: auth.publicIdentity,
       }),
     ).rejects.toThrow(/triad/i);
+  });
+
+  it("hydrates the hosted signer key from Rare API JWKS", async () => {
+    const { kit, identityPriv, signerPriv } = await setupKitWithRareApiClient();
+    const sessionPair = nacl.sign.keyPair();
+    const sessionPubkey = b64url(sessionPair.publicKey);
+    const agentId = "agent-test-id";
+
+    const auth = await createAuthPayload({
+      kit,
+      signerPriv,
+      identityPriv,
+      agentId,
+      sessionPair,
+      sessionPubkey,
+      delegationJti: "jti-jwks-1",
+    });
+
+    const result = await kit.completeAuth({
+      nonce: auth.challenge.nonce,
+      agentId,
+      sessionPubkey,
+      delegationToken: auth.delegation,
+      signatureBySession: auth.signatureBySession,
+      publicIdentityAttestation: auth.publicIdentity,
+    });
+
+    expect(result.agent_id).toBe(agentId);
   });
 
   it("rejects delegation replay", async () => {

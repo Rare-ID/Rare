@@ -109,6 +109,32 @@ class AgentClient:
             raise AgentClientError("expected JSON object response")
         return body
 
+    @staticmethod
+    def _nested_str(payload: dict[str, Any], *path: str) -> str | None:
+        current: Any = payload
+        for segment in path:
+            if not isinstance(current, dict):
+                return None
+            current = current.get(segment)
+        return current if isinstance(current, str) and current else None
+
+    def _extract_login_session_token(self, result: dict[str, Any]) -> str:
+        for path in (
+            ("session_token",),
+            ("sessionToken",),
+            ("session", "session_token"),
+            ("session", "sessionToken"),
+        ):
+            resolved = self._nested_str(result, *path)
+            if resolved:
+                return resolved
+        raise AgentClientError("missing session_token in login response")
+
+    def _normalize_login_result(self, result: dict[str, Any]) -> dict[str, Any]:
+        normalized = dict(result)
+        normalized.setdefault("session_token", self._extract_login_session_token(result))
+        return normalized
+
     def register(
         self,
         *,
@@ -714,22 +740,21 @@ class AgentClient:
             },
         )
 
-        self.state.session_token = str(result.get("session_token") or "")
+        normalized_result = self._normalize_login_result(result)
+
+        self.state.session_token = self._extract_login_session_token(normalized_result)
         self.state.session_pubkey = str(proof["session_pubkey"])
         self.state.session_aud = aud
 
-        maybe_level = result.get("level")
+        maybe_level = normalized_result.get("level")
         if isinstance(maybe_level, str):
             self.state.level = maybe_level
 
-        maybe_display_name = result.get("display_name")
+        maybe_display_name = normalized_result.get("display_name")
         if isinstance(maybe_display_name, str):
             self.state.display_name = maybe_display_name
 
-        if not self.state.session_token:
-            raise AgentClientError("missing session_token in login response")
-
-        return result
+        return normalized_result
 
     def sign_platform_action(
         self,

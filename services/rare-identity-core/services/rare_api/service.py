@@ -815,7 +815,16 @@ class RareService:
                     "kty": "OKP",
                     "crv": "Ed25519",
                     "x": public_key_to_b64(self.identity_jws_signer.public_key()),
-                    "retire_at": self.identity_keys.get(self.active_identity_kid, self.rare_signer_key).retire_at,
+                    "retire_at": self.identity_keys[self.active_identity_kid].retire_at,
+                    "rare_role": "identity",
+                },
+                {
+                    "kid": self.rare_delegation_signer.kid,
+                    "kty": "OKP",
+                    "crv": "Ed25519",
+                    "x": public_key_to_b64(self.rare_delegation_signer.public_key()),
+                    "retire_at": self.rare_signer_key.retire_at,
+                    "rare_role": "delegation",
                 }
             ],
         }

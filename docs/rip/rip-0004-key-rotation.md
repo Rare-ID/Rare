@@ -31,6 +31,13 @@ Response requirements:
   - `x` (base64url public key)
   - `retire_at` (unix timestamp)
 
+Key-set semantics:
+- The published set MAY contain multiple active Rare signing keys for different protocol roles.
+- Rare implementations SHOULD include a machine-readable role hint such as `rare_role`.
+- Current roles are:
+  - `identity`
+  - `delegation`
+
 ### Rotation requirements
 1. A new signing key MUST be published before first token issuance.
 2. Old and new keys MUST overlap for at least 7 days.

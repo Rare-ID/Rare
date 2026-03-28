@@ -168,6 +168,50 @@ def test_login_allows_public_fallback_when_full_hard_fail_disabled(monkeypatch: 
     http.close()
 
 
+def test_login_accepts_nested_session_token_response(monkeypatch: pytest.MonkeyPatch) -> None:
+    state = AgentState(
+        agent_id="agent-1",
+        key_mode="hosted-signer",
+        hosted_management_token="hosted-token",
+        hosted_management_token_expires_at=9999999999,
+        public_identity_attestation="public-jws",
+    )
+    client = AgentClient(state=state, http_client=_FakeHttpClient([]))
+
+    responses = iter(
+        [
+            {
+                "nonce": "nonce-1",
+                "issued_at": 100,
+                "expires_at": 220,
+            },
+            {
+                "session_pubkey": "session-pubkey",
+                "delegation_token": "delegation-jws",
+                "signature_by_session": "signature",
+            },
+            {
+                "agent_id": "agent-1",
+                "session": {
+                    "sessionToken": "deepmatch-session-token",
+                },
+            },
+        ]
+    )
+
+    def fake_request_json(**_kwargs):  # noqa: ANN003, ANN201
+        return next(responses)
+
+    monkeypatch.setattr(client, "_request_json", fake_request_json)
+
+    result = client.login(aud="platform", prefer_full=False)
+
+    assert result["session_token"] == "deepmatch-session-token"
+    assert result["session"]["sessionToken"] == "deepmatch-session-token"
+    assert state.session_token == "deepmatch-session-token"
+    assert state.session_pubkey == "session-pubkey"
+
+
 def test_client_self_hosted_signs_full_issue_before_api_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
