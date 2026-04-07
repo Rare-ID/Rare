@@ -1,285 +1,112 @@
-# For Platform Integration (Python)
+# Rare Platform Integration For Python
 
-This is the current Python integration contract for a third-party platform using Rare.
+Start with the public-only quickstart. The first integration should only require:
 
-## 10-Minute Quick Start
+- one required env: `PLATFORM_AUD`
+- two auth endpoints
+- one FastAPI session dependency or equivalent session helper
 
-Start with public login first. It gives you local verification, session handling, and delegated action support without requiring Rare platform registration.
+## Quickstart
 
-### 1) Install the SDK
+### 1. Install
 
 ```bash
 pip install rare-platform-sdk
 ```
 
-### 2) Configure the kit
+### 2. Bootstrap Rare from env
 
 ```python
 from rare_platform_sdk import (
     InMemoryChallengeStore,
     InMemoryReplayStore,
     InMemorySessionStore,
-    RareApiClient,
-    RarePlatformKitConfig,
-    create_rare_platform_kit,
+    create_rare_platform_kit_from_env,
 )
 
-rare = RareApiClient(rare_base_url="https://api.rareid.cc")
-kit = create_rare_platform_kit(
-    RarePlatformKitConfig(
-        aud="platform",
-        rare_api_client=rare,
-        challenge_store=InMemoryChallengeStore(),
-        replay_store=InMemoryReplayStore(),
-        session_store=InMemorySessionStore(),
-        # Optional override. When rare_api_client is configured, the kit can
-        # auto-discover the hosted delegation signer from Rare JWKS.
-        # rare_signer_public_key_b64="<rare signer Ed25519 public x>",
-    )
+challenge_store = InMemoryChallengeStore()
+replay_store = InMemoryReplayStore()
+session_store = InMemorySessionStore()
+
+kit = create_rare_platform_kit_from_env(
+    challenge_store=challenge_store,
+    replay_store=replay_store,
+    session_store=session_store,
 )
 ```
 
-Production uses `https://api.rareid.cc` and does not append `/rare`.
+Default behavior:
 
-Local development depends on how you mount Rare Core:
+- reads `PLATFORM_AUD`
+- defaults `RARE_BASE_URL` to `https://api.rareid.cc`
+- auto-discovers `RARE_SIGNER_PUBLIC_KEY_B64` from Rare JWKS when not set
+- derives `PLATFORM_ID` from `PLATFORM_AUD` for full-mode workflows
 
-- if Rare Core is mounted at the root, use `http://127.0.0.1:8000`
-- if Rare Core is mounted behind a platform prefix, use that exact prefix, for example `http://127.0.0.1:8000/rare`
+### 3. Add two auth endpoints
 
-`InMemory*Store` is only for local development. Production should use durable shared storage, typically Redis for challenge and replay state plus database-backed or Redis-backed session persistence.
-
-### 3) Expose auth challenge and auth complete handlers
-
-FastAPI helper:
+FastAPI is the preferred Python path:
 
 ```python
 from fastapi import FastAPI
-from rare_platform_sdk import create_fastapi_rare_router
+from rare_platform_sdk import create_fastapi_rare_router_from_env
 
 app = FastAPI()
-app.include_router(create_fastapi_rare_router(kit, prefix="/platform"))
-```
-
-Direct kit usage:
-
-```python
-from rare_platform_sdk import AuthCompleteInput
-
-challenge = await kit.issue_challenge("platform")
-result = await kit.complete_auth(
-    AuthCompleteInput(
-        nonce=nonce,
-        agent_id=agent_id,
-        session_pubkey=session_pubkey,
-        delegation_token=delegation_token,
-        signature_by_session=signature_by_session,
-        public_identity_attestation=public_identity_attestation,
-        full_identity_attestation=full_identity_attestation,
+app.include_router(
+    create_fastapi_rare_router_from_env(
+        challenge_store=challenge_store,
+        replay_store=replay_store,
+        session_store=session_store,
+        prefix="/rare",
     )
 )
 ```
 
-On success, the platform receives:
+### 4. Add session handling
 
-- `session_token`
-- `agent_id`
-- `identity_mode`
-- `raw_level`
-- `level`
-- `display_name`
-- `session_pubkey`
+For FastAPI:
 
-`level` is the effective platform level after SDK policy is applied.
+```python
+from fastapi import Depends
+from rare_platform_sdk import create_fastapi_session_dependency
 
-### 4) Validate the flow with Agent CLI
+require_rare_session = create_fastapi_session_dependency(session_store)
+
+@app.get("/me")
+async def me(session = Depends(require_rare_session)):
+    return {"agent_id": session.agent_id}
+```
+
+For other Python frameworks, call `resolve_platform_session(...)` or read the
+bearer token and look up the session store directly.
+
+## Required Security Checks
+
+These remain mandatory in quickstart and full-mode:
+
+- challenge nonce one-time use
+- delegation replay protection
+- identity attestation verification
+- triad consistency:
+  `auth_complete.agent_id == delegation.agent_id == attestation.sub`
+- full token `aud` enforcement in full-mode
+- signed action verification against the delegated session key
+
+Public-only caps effective governance to `L1`.
+
+## Full-Mode Upgrade
+
+Move to full-mode when you need:
+
+- Rare platform registration
+- platform-bound full attestation
+- durable shared stores
+- negative event ingest
+
+FastAPI remains the recommended Python integration path in full-mode as well.
+
+## Local Validation
 
 ```bash
 rare register --name alice
-rare login --aud platform --platform-url http://127.0.0.1:8000/platform --public-only
+rare login --aud <platform_aud> --platform-url http://127.0.0.1:<port>/rare --public-only
 ```
-
-## Required Config And Storage
-
-Every platform integration needs:
-
-- a unique platform audience string `aud`
-- a Rare API base URL
-- a challenge store with one-time nonce consumption
-- a replay store with atomic claim semantics
-- a session store for issued platform sessions
-
-Hosted-signer delegations require the Rare signer public key:
-
-- `rare_signer_public_key_b64`
-
-If `rare_api_client` is configured, the Python kit can auto-discover this key
-from `GET /.well-known/rare-keys.json`.
-
-Set `rare_signer_public_key_b64` explicitly only when:
-
-- you want to pin the Rare signer key manually
-- you verify offline without a Rare API client
-
-If you only verify self-hosted delegations, that extra signer key is not required.
-
-## Verification Red Lines
-
-These checks are mandatory:
-
-- challenge nonces must be one-time use
-- `delegation_token` must pass `typ`, `aud`, `scope`, `exp`, and replay checks
-- identity attestation must pass signature and expiry checks
-- identity triad must match exactly:
-
-```text
-auth_complete.agent_id == delegation.agent_id == attestation.sub
-```
-
-- signed actions must be verified against the delegated session public key, not the long-term identity key
-- full identity mode requires the token payload `aud` to match your platform `aud`
-- unknown claims must be ignored for forward compatibility
-
-These are protocol rules, not optional heuristics.
-
-## Public vs Full Identity
-
-### Public identity
-
-Use this mode when:
-
-- you want the fastest rollout
-- you do not need Rare platform registration yet
-
-Behavior:
-
-- agents authenticate with public attestation
-- the SDK still verifies delegation and identity locally
-- public identity mode caps effective governance to `L1`
-
-### Full identity
-
-Use this mode when:
-
-- you want Rare to bind the identity token to your platform `aud`
-- you want raw `L0` / `L1` / `L2` governance without the public-mode cap
-
-Prerequisite:
-
-- your platform must complete Rare platform registration first
-
-The SDK prefers full identity when a valid full attestation is present and falls back to public identity when only public attestation can be verified.
-
-## Verify Signed Actions
-
-After login, verify each delegated action with the platform session:
-
-```python
-from rare_platform_sdk import VerifyActionInput
-
-verified = await kit.verify_action(
-    VerifyActionInput(
-        session_token=session_token,
-        action=action,
-        action_payload=action_payload,
-        nonce=nonce,
-        issued_at=issued_at,
-        expires_at=expires_at,
-        signature_by_session=signature_by_session,
-    )
-)
-```
-
-This checks:
-
-- session validity
-- detached signature by the delegated session key
-- nonce replay protection
-- signed TTL window
-
-Only accept the action if verification succeeds.
-
-## Register As A Rare Platform For Full Mode
-
-### 1) Ask Rare for a DNS challenge
-
-```python
-challenge = await rare.issue_platform_register_challenge(
-    platform_aud="platform",
-    domain="platform.example.com",
-)
-```
-
-### 2) Publish the TXT record
-
-Use:
-
-- `challenge["txt_name"]`
-- `challenge["txt_value"]`
-
-### 3) Complete platform registration
-
-```python
-await rare.complete_platform_register(
-    challenge_id=challenge["challenge_id"],
-    platform_id="platform-prod",
-    platform_aud="platform",
-    domain="platform.example.com",
-    keys=[
-        {
-            "kid": "platform-signing-key-1",
-            "public_key": "<base64-ed25519-public-key>",
-        }
-    ],
-)
-```
-
-After activation, agents can request full attestation for your `aud`.
-
-## Report Negative Agent Events
-
-Rare accepts signed platform event tokens at:
-
-```text
-POST /v1/identity-library/events/ingest
-```
-
-```python
-from uuid import uuid4
-from rare_platform_sdk import IngestEventsInput, RarePlatformEventItem
-
-await kit.ingest_negative_events(
-    IngestEventsInput(
-        platform_id="platform-prod",
-        kid="platform-signing-key-1",
-        private_key_pem=private_key_pem,
-        jti=str(uuid4()),
-        events=[
-            RarePlatformEventItem(
-                event_id="ev-1",
-                agent_id="<agent_id>",
-                category="spam",
-                severity=3,
-                outcome="post_removed",
-                occurred_at=1700000000,
-            )
-        ],
-    )
-)
-```
-
-Allowed v1 categories:
-
-- `spam`
-- `fraud`
-- `abuse`
-- `policy_violation`
-
-Rare enforces replay protection on `(iss, jti)` and idempotency on `(iss, event_id)`.
-
-## Recommended Production Rollout
-
-1. Ship public login first.
-2. Add signed action verification and replay protection.
-3. Move off in-memory stores.
-4. Register the platform with Rare DNS verification.
-5. Enforce full-attestation-only policy if your risk model requires it.

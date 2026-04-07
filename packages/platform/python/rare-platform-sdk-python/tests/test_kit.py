@@ -7,7 +7,7 @@ import httpx
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
 from rare_identity_protocol import (
@@ -22,6 +22,7 @@ from rare_identity_protocol import (
     sign_jws,
 )
 from rare_platform_sdk import (
+    DEFAULT_RARE_BASE_URL,
     AuthChallenge,
     AuthCompleteInput,
     InMemoryChallengeStore,
@@ -37,7 +38,12 @@ from rare_platform_sdk import (
     RedisSessionStore,
     VerifyActionInput,
     create_fastapi_rare_router,
+    create_fastapi_rare_router_from_env,
+    create_fastapi_session_dependency,
     create_rare_platform_kit,
+    create_rare_platform_kit_from_env,
+    derive_platform_id_from_aud,
+    read_rare_platform_env,
     sign_platform_event_token,
 )
 
@@ -174,6 +180,36 @@ def setup_kit_with_rare_api_client():
     return kit, identity_private_key, signer_private_key, rare_api_client, http_client
 
 
+def build_jwks_handler(identity_public_key: str, signer_public_key: str):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if str(request.url) == "https://rare.example/.well-known/rare-keys.json":
+            return httpx.Response(
+                200,
+                json={
+                    "issuer": "rare",
+                    "keys": [
+                        {
+                            "kid": "rare-k1",
+                            "kty": "OKP",
+                            "crv": "Ed25519",
+                            "x": identity_public_key,
+                            "rare_role": "identity",
+                        },
+                        {
+                            "kid": "rare-signer-k1",
+                            "kty": "OKP",
+                            "crv": "Ed25519",
+                            "x": signer_public_key,
+                            "rare_role": "delegation",
+                        },
+                    ],
+                },
+            )
+        raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+    return handler
+
+
 def create_auth_payload(kit, identity_private_key, signer_private_key, *, agent_id: str, delegation_jti: str):
     challenge = run(kit.issue_challenge("platform"))
     session_private_b64, session_pubkey = generate_ed25519_keypair()
@@ -243,6 +279,60 @@ def test_complete_auth_falls_back_from_full_to_public_and_caps_level() -> None:
     assert result.raw_level == "L2"
     assert result.level == "L1"
     assert result.display_name == "neo"
+
+
+def test_read_rare_platform_env_defaults_and_derives_platform_id() -> None:
+    resolved = read_rare_platform_env({"PLATFORM_AUD": "Platform Demo"})
+
+    assert resolved.platform_aud == "Platform Demo"
+    assert resolved.platform_id == "platform-demo"
+    assert resolved.rare_base_url == DEFAULT_RARE_BASE_URL
+    assert derive_platform_id_from_aud("Example.Platform/V1") == "example-platform-v1"
+
+
+def test_create_rare_platform_kit_from_env_hydrates_hosted_signer_key_from_rare_api() -> None:
+    identity_private_key = Ed25519PrivateKey.generate()
+    signer_private_key = Ed25519PrivateKey.generate()
+    http_client = httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            build_jwks_handler(
+                public_key_to_b64(identity_private_key.public_key()),
+                public_key_to_b64(signer_private_key.public_key()),
+            )
+        )
+    )
+    kit = create_rare_platform_kit_from_env(
+        env={
+            "PLATFORM_AUD": "platform",
+            "RARE_BASE_URL": "https://rare.example",
+        },
+        challenge_store=InMemoryChallengeStore(),
+        replay_store=InMemoryReplayStore(),
+        session_store=InMemorySessionStore(),
+        http_client=http_client,
+    )
+    agent_id = new_agent_id()
+    auth = create_auth_payload(
+        kit, identity_private_key, signer_private_key, agent_id=agent_id, delegation_jti="jti-env"
+    )
+
+    try:
+        result = run(
+            kit.complete_auth(
+                AuthCompleteInput(
+                    nonce=auth["challenge"].nonce,
+                    agent_id=agent_id,
+                    session_pubkey=auth["session_pubkey"],
+                    delegation_token=auth["delegation"],
+                    signature_by_session=auth["signature_by_session"],
+                    public_identity_attestation=auth["public_identity"],
+                )
+            )
+        )
+    finally:
+        run(http_client.aclose())
+
+    assert result.agent_id == agent_id
 
 
 def test_complete_auth_rejects_triad_mismatch() -> None:
@@ -496,6 +586,106 @@ def test_fastapi_router_exposes_auth_endpoints() -> None:
     )
     assert response.status_code == 200
     assert response.json()["agent_id"] == agent_id
+
+
+def test_fastapi_router_from_env_exposes_auth_endpoints() -> None:
+    identity_private_key = Ed25519PrivateKey.generate()
+    signer_private_key = Ed25519PrivateKey.generate()
+    session_private_b64, session_pubkey = generate_ed25519_keypair()
+    session_private_key = load_private_key(session_private_b64)
+    agent_id = new_agent_id()
+    challenge_store = InMemoryChallengeStore()
+    replay_store = InMemoryReplayStore()
+    session_store = InMemorySessionStore()
+
+    app = FastAPI()
+    app.include_router(
+        create_fastapi_rare_router_from_env(
+            challenge_store=challenge_store,
+            replay_store=replay_store,
+            session_store=session_store,
+            prefix="/rare",
+            env={
+                "PLATFORM_AUD": "platform",
+                "RARE_SIGNER_PUBLIC_KEY_B64": public_key_to_b64(
+                    signer_private_key.public_key()
+                ),
+            },
+            key_resolver=lambda kid: identity_private_key.public_key() if kid == "rare-k1" else None,
+        )
+    )
+    client = TestClient(app)
+
+    challenge_response = client.post("/rare/auth/challenge", json={"aud": "platform"})
+    assert challenge_response.status_code == 200
+    challenge = challenge_response.json()
+    signature_by_session = sign_detached(
+        build_auth_challenge_payload(
+            aud=challenge["aud"],
+            nonce=challenge["nonce"],
+            issued_at=challenge["issued_at"],
+            expires_at=challenge["expires_at"],
+        ),
+        session_private_key,
+    )
+
+    response = client.post(
+        "/rare/auth/complete",
+        json={
+            "nonce": challenge["nonce"],
+            "agent_id": agent_id,
+            "session_pubkey": session_pubkey,
+            "delegation_token": _issue_delegation(
+                signer_private_key=signer_private_key,
+                agent_id=agent_id,
+                session_pubkey=session_pubkey,
+                jti="jti-fastapi-env",
+            ),
+            "signature_by_session": signature_by_session,
+            "public_identity_attestation": _issue_identity(
+                signer_private_key=identity_private_key,
+                kid="rare-k1",
+                typ="rare.identity.public+jws",
+                agent_id=agent_id,
+                level="L1",
+                jti="id-fastapi-env",
+            ),
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["agent_id"] == agent_id
+
+
+def test_fastapi_session_dependency_resolves_bearer_token() -> None:
+    session_store = InMemorySessionStore()
+    run(
+        session_store.save(
+            PlatformSession(
+                session_token="s1",
+                agent_id="agent-1",
+                session_pubkey="pub-1",
+                identity_mode="public",
+                raw_level="L1",
+                effective_level="L1",
+                display_name="neo",
+                aud="platform",
+                created_at=1,
+                expires_at=9_999_999_999,
+            )
+        )
+    )
+
+    app = FastAPI()
+    require_session = create_fastapi_session_dependency(session_store)
+
+    @app.get("/me")
+    async def me(session: PlatformSession = Depends(require_session)):
+        return {"agent_id": session.agent_id}
+
+    client = TestClient(app)
+    response = client.get("/me", headers={"Authorization": "Bearer s1"})
+    assert response.status_code == 200
+    assert response.json() == {"agent_id": "agent-1"}
 
 
 class FakeRedis:

@@ -1,18 +1,19 @@
 # rare-platform-sdk
 
-Python toolkit for third-party platforms integrating Rare with local verification-first defaults.
+Python toolkit for platforms integrating Rare with adoption-first defaults.
 
-## What It Is
+## Integration Modes
 
-`rare-platform-sdk` helps Python services issue Rare auth challenges, complete login, verify delegated signed actions, manage platform sessions, and optionally ingest signed negative-event signals back into Rare.
+- `public-only / quickstart`: start here
+- `full-mode / production`: add platform registration, durable stores, full attestation, and event ingest
 
-## Who It Is For
+Quickstart reduces first integration to:
 
-- Python and FastAPI platforms adding Rare login
-- Backend teams that want local identity/delegation verification
-- Integrators that need Redis-backed replay protection and session storage
+- one required env: `PLATFORM_AUD`
+- two auth endpoints
+- one session dependency or helper
 
-## Quick Start
+## Quickstart
 
 ```bash
 pip install rare-platform-sdk
@@ -23,47 +24,62 @@ from rare_platform_sdk import (
     InMemoryChallengeStore,
     InMemoryReplayStore,
     InMemorySessionStore,
-    RareApiClient,
-    RarePlatformKitConfig,
-    create_rare_platform_kit,
+    create_rare_platform_kit_from_env,
 )
 
-rare = RareApiClient(rare_base_url="https://api.rareid.cc")
-kit = create_rare_platform_kit(
-    RarePlatformKitConfig(
-        aud="platform",
-        rare_api_client=rare,
-        challenge_store=InMemoryChallengeStore(),
-        replay_store=InMemoryReplayStore(),
-        session_store=InMemorySessionStore(),
-    )
+challenge_store = InMemoryChallengeStore()
+replay_store = InMemoryReplayStore()
+session_store = InMemorySessionStore()
+
+kit = create_rare_platform_kit_from_env(
+    challenge_store=challenge_store,
+    replay_store=replay_store,
+    session_store=session_store,
 )
 ```
 
-FastAPI integration:
+Defaults:
+
+- `RARE_BASE_URL=https://api.rareid.cc`
+- `RARE_SIGNER_PUBLIC_KEY_B64` auto-discovered from Rare JWKS when omitted
+- `PLATFORM_ID` derived from `PLATFORM_AUD` for full-mode workflows
+
+## FastAPI
 
 ```python
-from fastapi import FastAPI
-from rare_platform_sdk import create_fastapi_rare_router
+from fastapi import Depends, FastAPI
+from rare_platform_sdk import (
+    create_fastapi_rare_router_from_env,
+    create_fastapi_session_dependency,
+)
 
 app = FastAPI()
-app.include_router(create_fastapi_rare_router(kit, prefix="/rare"))
+app.include_router(
+    create_fastapi_rare_router_from_env(
+        challenge_store=challenge_store,
+        replay_store=replay_store,
+        session_store=session_store,
+        prefix="/rare",
+    )
+)
+
+require_rare_session = create_fastapi_session_dependency(session_store)
 ```
+
+FastAPI is the preferred Python integration path.
+
+## Security Notes
+
+Quickstart still enforces:
+
+- challenge nonce one-time use
+- delegation replay protection
+- identity/delegation triad consistency
+- local attestation verification
+- public-mode governance cap to `L1`
 
 ## Production Notes
 
-- Challenge nonces must be one-time use.
-- Delegation replay protection must be atomic.
-- Full identity mode requires `payload.aud == expected_aud`.
-- Identity triad must match:
-  `auth_complete.agent_id == delegation.agent_id == attestation.sub`
-- Public identity mode is capped to `L1` effective governance.
-
-## Development
-
-```bash
-pip install -r requirements-test.lock
-pip install -e .[test] --no-deps
-pytest -q
-python -m build
-```
+- Replace in-memory stores before production
+- Move to full-mode only when platform registration or full attestation is required
+- Keep bearer-token session transport supported even if you add cookie convenience helpers

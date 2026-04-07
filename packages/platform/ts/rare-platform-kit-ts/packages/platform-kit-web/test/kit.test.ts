@@ -11,6 +11,10 @@ import {
   InMemoryReplayStore,
   InMemorySessionStore,
   createRarePlatformKit,
+  createRarePlatformKitFromEnv,
+  createRareSessionResolver,
+  derivePlatformIdFromAud,
+  readRarePlatformEnv,
 } from "../src/index";
 
 function b64url(bytes: Uint8Array): string {
@@ -188,6 +192,19 @@ async function createAuthPayload(args: {
 }
 
 describe("RarePlatformKit", () => {
+  it("reads env defaults and derives platform ids", () => {
+    const env = readRarePlatformEnv({
+      PLATFORM_AUD: "Platform Demo",
+    });
+
+    expect(env.platformAud).toBe("Platform Demo");
+    expect(env.platformId).toBe("platform-demo");
+    expect(env.rareBaseUrl).toBe("https://api.rareid.cc");
+    expect(derivePlatformIdFromAud("Example.Platform/V1")).toBe(
+      "example-platform-v1",
+    );
+  });
+
   it("consumes in-memory challenges exactly once", async () => {
     const store = new InMemoryChallengeStore();
     await store.set({
@@ -294,6 +311,106 @@ describe("RarePlatformKit", () => {
     });
 
     expect(result.agent_id).toBe(agentId);
+  });
+
+  it("hydrates the hosted signer key from env-configured Rare API", async () => {
+    const [
+      { privateKey: identityPriv, publicKey: identityPub },
+      { privateKey: signerPriv, publicKey: signerPub },
+    ] = await Promise.all([generateKeyPair("EdDSA"), generateKeyPair("EdDSA")]);
+
+    const identityJwk = await exportJWK(identityPub);
+    const signerJwk = await exportJWK(signerPub);
+
+    const kit = createRarePlatformKitFromEnv({
+      env: {
+        PLATFORM_AUD: "platform",
+        RARE_BASE_URL: "https://rare.example",
+      },
+      challengeStore: new InMemoryChallengeStore(),
+      replayStore: new InMemoryReplayStore(),
+      sessionStore: new InMemorySessionStore(),
+      fetchImpl: async (input) => {
+        expect(String(input)).toBe(
+          "https://rare.example/.well-known/rare-keys.json",
+        );
+        return new Response(
+          JSON.stringify({
+            issuer: "rare",
+            keys: [
+              {
+                kid: "rare-k1",
+                kty: "OKP",
+                crv: "Ed25519",
+                x: String(identityJwk.x),
+                rare_role: "identity",
+              },
+              {
+                kid: "rare-signer-k1",
+                kty: "OKP",
+                crv: "Ed25519",
+                x: String(signerJwk.x),
+                rare_role: "delegation",
+              },
+            ],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      },
+    });
+
+    const sessionPair = nacl.sign.keyPair();
+    const sessionPubkey = b64url(sessionPair.publicKey);
+    const agentId = "agent-env-id";
+
+    const auth = await createAuthPayload({
+      kit,
+      signerPriv,
+      identityPriv,
+      agentId,
+      sessionPair,
+      sessionPubkey,
+      delegationJti: "jti-env-1",
+    });
+
+    const result = await kit.completeAuth({
+      nonce: auth.challenge.nonce,
+      agentId,
+      sessionPubkey,
+      delegationToken: auth.delegation,
+      signatureBySession: auth.signatureBySession,
+      publicIdentityAttestation: auth.publicIdentity,
+    });
+
+    expect(result.agent_id).toBe(agentId);
+  });
+
+  it("resolves sessions from bearer headers and cookies", async () => {
+    const sessionStore = new InMemorySessionStore();
+    await sessionStore.save({
+      sessionToken: "s1",
+      agentId: "agent-1",
+      sessionPubkey: "pub-1",
+      identityMode: "public",
+      rawLevel: "L1",
+      effectiveLevel: "L1",
+      displayName: "neo",
+      aud: "platform",
+      createdAt: 1,
+      expiresAt: 9999999999,
+    });
+
+    const resolveSession = createRareSessionResolver({
+      sessionStore,
+      cookieName: "rare_session",
+    });
+
+    await expect(
+      resolveSession({ authorizationHeader: "Bearer s1" }),
+    ).resolves.toMatchObject({ agentId: "agent-1" });
+    await expect(
+      resolveSession({ cookieHeader: "rare_session=s1" }),
+    ).resolves.toMatchObject({ agentId: "agent-1" });
   });
 
   it("rejects delegation replay", async () => {

@@ -1,35 +1,75 @@
-# FULL MODE GUIDE (registered-full)
+# FULL MODE GUIDE (registered / production)
 
-Use this mode when your platform needs real L0/L1/L2 governance.
+Use full-mode only when you need production governance or platform-bound full attestation.
 
-For a local end-to-end validation flow against `https://api.rareid.cc`, use
-`DEMO_FULL_LOGIN.md`.
+## When To Upgrade
 
-## Flow
+Stay on public-only until you need one of these:
 
-1. Platform requests DNS challenge
-- `POST /v1/platforms/register/challenge`
-2. Platform sets DNS TXT and completes register
-- `POST /v1/platforms/register/complete`
-3. Agent issues full attestation
-- `POST /v1/attestations/full/issue`
-4. Platform calls `completeAuth` with both tokens
-- SDK prefers full token and falls back to public if full is unavailable.
+- Rare platform registration
+- raw `L0/L1/L2` governance without the public cap
+- full identity attestation bound to your platform `aud`
+- negative event ingest
+- durable shared storage across instances
 
-## Governance behavior
+## Full-Mode Checklist
 
-- `identity_mode=full`: use raw `L0/L1/L2`.
-- `identity_mode=public`: SDK returns `effective_level` capped at `L1`.
+1. Keep your quickstart auth routes and session flow.
+2. Replace in-memory stores with durable shared stores.
+3. Register the platform with Rare.
+4. Accept full identity attestation in `completeAuth`.
+5. Enforce full token `payload.aud == PLATFORM_AUD`.
+6. Add platform event ingest if needed.
 
-## Local demo commands
+## Platform Registration Flow
 
-```bash
-pnpm demo:register:challenge
-pnpm demo:register:complete
-pnpm demo:start
+1. Ask Rare for a DNS challenge:
+
+```ts
+const challenge = await rare.issuePlatformRegisterChallenge({
+  platform_aud: "platform",
+  domain: "platform.example.com",
+});
 ```
 
-## Security checks
+2. Publish the TXT record from `txt_name` and `txt_value`.
+3. Complete registration:
 
-- Full token must satisfy `payload.aud == platform_aud`.
-- Triad and replay checks are still mandatory.
+```ts
+await rare.completePlatformRegister({
+  challenge_id: challenge.challenge_id,
+  platform_id: "platform-prod",
+  platform_aud: "platform",
+  domain: "platform.example.com",
+  keys: [
+    {
+      kid: "platform-signing-key-1",
+      public_key: "<base64-ed25519-public-key>",
+    },
+  ],
+});
+```
+
+## Storage Expectations
+
+Production should use durable stores for:
+
+- challenge nonce consumption
+- replay claims
+- platform sessions
+
+Redis is the default recommendation for TypeScript.
+
+## Event Ingest
+
+If the platform sends negative event signals back to Rare, use:
+
+- `kit.ingestNegativeEvents(...)`
+
+Only surface this in the integration after login is already working.
+
+## Demo
+
+For an end-to-end local full-mode walkthrough, use:
+
+- `DEMO_FULL_LOGIN.md`

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from typing import Any, cast
+from typing import Any, Mapping, cast
 
+import httpx
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
@@ -25,6 +26,7 @@ from rare_identity_verifier import parse_rare_jwks, verify_delegation_token, ver
 from rare_platform_sdk.client import RareApiClient
 from rare_platform_sdk.client import RareApiClientError
 from rare_platform_sdk.client import extract_rare_signer_public_key_b64_from_jwks
+from rare_platform_sdk.env import read_rare_platform_env
 from rare_platform_sdk.types import (
     AuthChallenge,
     AuthCompleteInput,
@@ -321,3 +323,45 @@ class _RarePlatformKitImpl:
 
 def create_rare_platform_kit(config: RarePlatformKitConfig) -> _RarePlatformKitImpl:
     return _RarePlatformKitImpl(config)
+
+
+def create_rare_platform_kit_from_env(
+    *,
+    challenge_store: Any,
+    replay_store: Any,
+    session_store: Any,
+    env: Mapping[str, str] | None = None,
+    rare_api_client: RareApiClient | None = None,
+    http_client: httpx.AsyncClient | None = None,
+    default_headers: dict[str, str] | None = None,
+    timeout_seconds: float = 10.0,
+    key_resolver: Any | None = None,
+    initial_jwks: dict[str, Any] | None = None,
+    challenge_ttl_seconds: int = 120,
+    session_ttl_seconds: int = 3600,
+    max_signed_ttl_seconds: int = 300,
+    clock_skew_seconds: int = 30,
+) -> _RarePlatformKitImpl:
+    resolved_env = read_rare_platform_env(env)
+    resolved_client = rare_api_client or RareApiClient(
+        rare_base_url=resolved_env.rare_base_url,
+        http_client=http_client,
+        default_headers=default_headers,
+        timeout_seconds=timeout_seconds,
+    )
+    return create_rare_platform_kit(
+        RarePlatformKitConfig(
+            aud=resolved_env.platform_aud,
+            challenge_store=challenge_store,
+            replay_store=replay_store,
+            session_store=session_store,
+            rare_api_client=resolved_client,
+            key_resolver=key_resolver,
+            initial_jwks=initial_jwks,
+            rare_signer_public_key_b64=resolved_env.rare_signer_public_key_b64,
+            challenge_ttl_seconds=challenge_ttl_seconds,
+            session_ttl_seconds=session_ttl_seconds,
+            max_signed_ttl_seconds=max_signed_ttl_seconds,
+            clock_skew_seconds=clock_skew_seconds,
+        )
+    )

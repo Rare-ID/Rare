@@ -1,5 +1,5 @@
 import {
-  type RareApiClient,
+  RareApiClient,
   extractRareSignerPublicKeyB64,
 } from "@rare-id/platform-kit-client";
 import {
@@ -20,6 +20,7 @@ import {
 
 export type IdentityMode = "public" | "full";
 export type EffectiveLevel = "L0" | "L1" | "L2";
+export const DEFAULT_RARE_BASE_URL = "https://api.rareid.cc";
 
 export interface AuthChallenge {
   nonce: string;
@@ -93,6 +94,13 @@ export interface IngestEventsResult {
   response: Record<string, unknown>;
 }
 
+export interface RarePlatformEnv {
+  platformAud: string;
+  platformId: string;
+  rareBaseUrl: string;
+  rareSignerPublicKeyB64?: string;
+}
+
 export interface ChallengeStore {
   set(challenge: AuthChallenge): Promise<void>;
   consume(nonce: string): Promise<AuthChallenge | null>;
@@ -105,6 +113,12 @@ export interface ReplayStore {
 export interface SessionStore {
   save(session: PlatformSession): Promise<void>;
   get(sessionToken: string): Promise<PlatformSession | null>;
+}
+
+export interface RareSessionLookupInput {
+  sessionToken?: string | null;
+  authorizationHeader?: string | null;
+  cookieHeader?: string | null;
 }
 
 export interface RarePlatformKit {
@@ -127,6 +141,154 @@ export interface RarePlatformKitConfig {
   sessionTtlSeconds?: number;
   maxSignedTtlSeconds?: number;
   clockSkewSeconds?: number;
+}
+
+export interface CreateRarePlatformKitFromEnvOptions {
+  env?: Record<string, string | undefined>;
+  challengeStore: ChallengeStore;
+  replayStore: ReplayStore;
+  sessionStore: SessionStore;
+  rareApiClient?: RareApiClient;
+  fetchImpl?: typeof fetch;
+  defaultHeaders?: Record<string, string>;
+  keyResolver?: KeyResolver;
+  initialJwks?: { issuer?: string; keys?: Array<Record<string, unknown>> };
+  challengeTtlSeconds?: number;
+  sessionTtlSeconds?: number;
+  maxSignedTtlSeconds?: number;
+  clockSkewSeconds?: number;
+}
+
+export interface RareSessionResolverConfig {
+  sessionStore: SessionStore;
+  cookieName?: string;
+}
+
+function requireEnvString(
+  env: Record<string, string | undefined>,
+  key: string,
+): string {
+  const value = env[key]?.trim();
+  if (!value) {
+    throw new Error(`missing required environment variable ${key}`);
+  }
+  return value;
+}
+
+export function derivePlatformIdFromAud(aud: string): string {
+  const normalized = aud
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (!normalized) {
+    throw new Error(
+      "PLATFORM_AUD must contain at least one alphanumeric character",
+    );
+  }
+  return normalized;
+}
+
+export function readRarePlatformEnv(
+  env: Record<string, string | undefined> = process.env,
+): RarePlatformEnv {
+  const platformAud = requireEnvString(env, "PLATFORM_AUD");
+  const rareBaseUrl = (env.RARE_BASE_URL ?? DEFAULT_RARE_BASE_URL)
+    .trim()
+    .replace(/\/$/, "");
+  const rareSignerPublicKeyB64 = env.RARE_SIGNER_PUBLIC_KEY_B64?.trim();
+  const platformId =
+    env.PLATFORM_ID?.trim() || derivePlatformIdFromAud(platformAud);
+
+  return {
+    platformAud,
+    platformId,
+    rareBaseUrl,
+    rareSignerPublicKeyB64:
+      rareSignerPublicKeyB64 && rareSignerPublicKeyB64.length > 0
+        ? rareSignerPublicKeyB64
+        : undefined,
+  };
+}
+
+export function createRarePlatformKitFromEnv(
+  options: CreateRarePlatformKitFromEnvOptions,
+): RarePlatformKit {
+  const env = readRarePlatformEnv(options.env);
+  const rareApiClient =
+    options.rareApiClient ??
+    new RareApiClient({
+      rareBaseUrl: env.rareBaseUrl,
+      fetchImpl: options.fetchImpl,
+      defaultHeaders: options.defaultHeaders,
+    });
+
+  return createRarePlatformKit({
+    aud: env.platformAud,
+    challengeStore: options.challengeStore,
+    replayStore: options.replayStore,
+    sessionStore: options.sessionStore,
+    rareApiClient,
+    keyResolver: options.keyResolver,
+    initialJwks: options.initialJwks,
+    rareSignerPublicKeyB64: env.rareSignerPublicKeyB64,
+    challengeTtlSeconds: options.challengeTtlSeconds,
+    sessionTtlSeconds: options.sessionTtlSeconds,
+    maxSignedTtlSeconds: options.maxSignedTtlSeconds,
+    clockSkewSeconds: options.clockSkewSeconds,
+  });
+}
+
+export function extractBearerToken(
+  authorizationHeader?: string | null,
+): string | null {
+  if (!authorizationHeader) {
+    return null;
+  }
+  const match = authorizationHeader.match(/^Bearer\s+(.+)$/i);
+  if (!match) {
+    return null;
+  }
+  const token = match[1]?.trim();
+  return token ? token : null;
+}
+
+function readCookie(cookieHeader: string, cookieName: string): string | null {
+  for (const part of cookieHeader.split(";")) {
+    const [rawName, ...rawValue] = part.split("=");
+    if (rawName?.trim() !== cookieName) {
+      continue;
+    }
+    const value = rawValue.join("=").trim();
+    if (!value) {
+      return null;
+    }
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
+    }
+  }
+  return null;
+}
+
+export function createRareSessionResolver(
+  config: RareSessionResolverConfig,
+): (input: RareSessionLookupInput) => Promise<PlatformSession | null> {
+  const cookieName = config.cookieName ?? "rare_session";
+
+  return async (input) => {
+    const explicitSessionToken = input.sessionToken?.trim();
+    const sessionToken =
+      explicitSessionToken ||
+      extractBearerToken(input.authorizationHeader) ||
+      (input.cookieHeader ? readCookie(input.cookieHeader, cookieName) : null);
+
+    if (!sessionToken) {
+      return null;
+    }
+    return config.sessionStore.get(sessionToken);
+  };
 }
 
 export function createRarePlatformKit(

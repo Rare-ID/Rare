@@ -1,42 +1,63 @@
-# QUICKSTART (public-only in <=30 minutes)
+# QUICKSTART (public-only / adoption-first)
 
-This guide helps a third-party platform ship Rare login quickly with local verification.
+This path is for the first Rare integration on a platform.
 
-## 1) Install
+## Install
 
 ```bash
-pnpm add @rare-id/platform-kit-core @rare-id/platform-kit-client @rare-id/platform-kit-web
+pnpm add @rare-id/platform-kit-web
 ```
 
-## 2) Wire stores and kit
+For Express:
+
+```bash
+pnpm add @rare-id/platform-kit-web @rare-id/platform-kit-express
+```
+
+## Bootstrap from env
 
 ```ts
-import { RareApiClient } from "@rare-id/platform-kit-client";
 import {
   InMemoryChallengeStore,
   InMemoryReplayStore,
   InMemorySessionStore,
-  createRarePlatformKit,
+  createRarePlatformKitFromEnv,
+  createRareSessionResolver,
 } from "@rare-id/platform-kit-web";
 
-const rare = new RareApiClient({ rareBaseUrl: "https://api.rareid.cc" });
-const kit = createRarePlatformKit({
-  aud: "platform",
-  rareApiClient: rare,
-  challengeStore: new InMemoryChallengeStore(),
-  replayStore: new InMemoryReplayStore(),
-  sessionStore: new InMemorySessionStore(),
-  // Optional override. With rareApiClient configured, the kit can auto-discover
-  // the hosted delegation signer from Rare JWKS.
-  // rareSignerPublicKeyB64: "<rare signer Ed25519 public x>",
+const challengeStore = new InMemoryChallengeStore();
+const replayStore = new InMemoryReplayStore();
+const sessionStore = new InMemorySessionStore();
+
+const rare = createRarePlatformKitFromEnv({
+  challengeStore,
+  replayStore,
+  sessionStore,
 });
+
+const resolveRareSession = createRareSessionResolver({ sessionStore });
 ```
 
-## 3) Add two handlers
+Required env:
+
+- `PLATFORM_AUD`
+
+Optional env:
+
+- `RARE_BASE_URL`
+- `RARE_SIGNER_PUBLIC_KEY_B64`
+
+Defaults:
+
+- `RARE_BASE_URL=https://api.rareid.cc`
+- signer key via Rare JWKS when `RARE_SIGNER_PUBLIC_KEY_B64` is absent
+
+## Add Two Auth Endpoints
 
 ```ts
-const challenge = await kit.issueChallenge("platform");
-const login = await kit.completeAuth({
+const challenge = await rare.issueChallenge();
+
+const login = await rare.completeAuth({
   nonce,
   agentId,
   sessionPubkey,
@@ -47,20 +68,54 @@ const login = await kit.completeAuth({
 });
 ```
 
-## 4) Enforce protocol redlines
+Express shortcut:
 
-- Must validate `delegation_token`: `typ/aud/scope/jti/exp`.
-- Must validate identity token: `typ/ver/iss`.
-- Must enforce triad:
-  `auth_complete.agent_id == delegation.agent_id == identity_attestation.sub`.
-- Must enforce challenge nonce one-time use.
-- For public identity mode, governance is capped to L1 automatically.
+```ts
+import { createExpressRareRouter } from "@rare-id/platform-kit-express";
 
-## 5) Validate with Agent CLI
+app.use("/rare", createExpressRareRouter(rare));
+```
+
+## Add Session Handling
+
+Generic route handlers:
+
+```ts
+const session = await resolveRareSession({
+  authorizationHeader: request.headers.get("authorization"),
+  cookieHeader: request.headers.get("cookie"),
+});
+```
+
+Express:
+
+```ts
+import { createRareSessionMiddleware } from "@rare-id/platform-kit-express";
+
+app.get("/me", createRareSessionMiddleware({ sessionStore }), handler);
+```
+
+## Verify Delegated Writes
+
+```ts
+import { createRareActionMiddleware } from "@rare-id/platform-kit-express";
+```
+
+Use it on routes that accept delegated signed actions.
+
+## Security Notes
+
+Quickstart still enforces:
+
+- challenge nonce one-time use
+- delegation replay protection
+- identity/delegation triad consistency
+- local attestation verification
+- public-mode governance cap to `L1`
+
+## Local Validation
 
 ```bash
 rare register --name alice
-rare login --aud platform --platform-url http://127.0.0.1:8000/platform --public-only
+rare login --aud <platform_aud> --platform-url http://127.0.0.1:<port>/rare --public-only
 ```
-
-本地联调时也可以改回自建 Rare Core URL，例如 `http://127.0.0.1:8000`。

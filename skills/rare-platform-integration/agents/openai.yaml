@@ -1,0 +1,4 @@
+interface:
+  display_name: "Rare Platform Integration"
+  short_description: "Integrate Rare login into Next.js, Express, or FastAPI"
+  default_prompt: "Use $rare-platform-integration to detect the app framework, explain the public-only and full-mode options, ask the human to choose, and then integrate Rare login into this Next.js, Express, or FastAPI app."

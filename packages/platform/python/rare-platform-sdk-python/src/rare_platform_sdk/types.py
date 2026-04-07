@@ -103,6 +103,14 @@ class IngestEventsResult:
     response: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class RarePlatformEnv:
+    platform_aud: str
+    platform_id: str
+    rare_base_url: str
+    rare_signer_public_key_b64: str | None = None
+
+
 class ChallengeStore(Protocol):
     async def set(self, challenge: AuthChallenge) -> None:
         ...

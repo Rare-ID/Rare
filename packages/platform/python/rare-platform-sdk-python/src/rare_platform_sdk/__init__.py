@@ -1,12 +1,25 @@
 from rare_platform_sdk.client import ApiError, RareApiClient, RareApiClientError
+from rare_platform_sdk.env import (
+    DEFAULT_RARE_BASE_URL,
+    derive_platform_id_from_aud,
+    read_rare_platform_env,
+)
 from rare_platform_sdk.fastapi import (
     AuthChallengeRequest,
     AuthChallengeResponse,
     AuthCompleteRequest,
     AuthCompleteResponse,
     create_fastapi_rare_router,
+    create_fastapi_rare_router_from_env,
+    create_fastapi_session_dependency,
+    extract_bearer_token,
+    resolve_platform_session,
 )
-from rare_platform_sdk.kit import create_rare_platform_kit, sign_platform_event_token
+from rare_platform_sdk.kit import (
+    create_rare_platform_kit,
+    create_rare_platform_kit_from_env,
+    sign_platform_event_token,
+)
 from rare_platform_sdk.stores import (
     InMemoryChallengeStore,
     InMemoryReplayStore,
@@ -22,6 +35,7 @@ from rare_platform_sdk.types import (
     IngestEventsInput,
     IngestEventsResult,
     PlatformSession,
+    RarePlatformEnv,
     RarePlatformEventItem,
     RarePlatformKitConfig,
     VerifiedActionContext,
@@ -37,6 +51,7 @@ __all__ = [
     "AuthCompleteRequest",
     "AuthCompleteResponse",
     "AuthCompleteResult",
+    "DEFAULT_RARE_BASE_URL",
     "InMemoryChallengeStore",
     "InMemoryReplayStore",
     "InMemorySessionStore",
@@ -45,6 +60,7 @@ __all__ = [
     "PlatformSession",
     "RareApiClient",
     "RareApiClientError",
+    "RarePlatformEnv",
     "RarePlatformEventItem",
     "RarePlatformKitConfig",
     "RedisChallengeStore",
@@ -53,6 +69,13 @@ __all__ = [
     "VerifiedActionContext",
     "VerifyActionInput",
     "create_fastapi_rare_router",
+    "create_fastapi_rare_router_from_env",
+    "create_fastapi_session_dependency",
     "create_rare_platform_kit",
+    "create_rare_platform_kit_from_env",
+    "derive_platform_id_from_aud",
+    "extract_bearer_token",
+    "read_rare_platform_env",
+    "resolve_platform_session",
     "sign_platform_event_token",
 ]
