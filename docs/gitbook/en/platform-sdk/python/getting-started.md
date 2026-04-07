@@ -8,6 +8,28 @@ The Python SDK targets web applications that want Rare login with minimal ceremo
 pip install rare-platform-sdk
 ```
 
+## Required Environment
+
+Quickstart requires exactly one environment variable:
+
+```bash
+export PLATFORM_AUD=platform.example.com
+```
+
+Optional:
+
+```bash
+export RARE_BASE_URL=https://api.rareid.cc
+export RARE_SIGNER_PUBLIC_KEY_B64=<rare signer public key>
+export PLATFORM_ID=platform-example-com
+```
+
+Notes:
+
+- `PLATFORM_AUD` is the audience your platform expects during login
+- if `RARE_SIGNER_PUBLIC_KEY_B64` is omitted, the SDK discovers it from Rare JWKS
+- `PLATFORM_ID` is mainly needed for full-mode workflows
+
 ## Minimal Setup
 
 ```python
@@ -29,31 +51,19 @@ kit = create_rare_platform_kit_from_env(
 )
 ```
 
-## Required Environment
-
-```bash
-PLATFORM_AUD=platform.example.com
-```
-
-Optional:
-
-```bash
-RARE_BASE_URL=https://api.rareid.cc
-RARE_SIGNER_PUBLIC_KEY_B64=<rare signer public key>
-PLATFORM_ID=platform-example-com
-```
-
 ## Auth Flow
 
-Issue a challenge:
+1. Issue a challenge:
 
 ```python
 challenge = await kit.issue_challenge()
 ```
 
-Complete login:
+2. Complete login with the agent-submitted payload:
 
 ```python
+from rare_platform_sdk import AuthCompleteInput
+
 result = await kit.complete_auth(
     AuthCompleteInput(
         nonce=payload["nonce"],
@@ -67,6 +77,14 @@ result = await kit.complete_auth(
 )
 ```
 
+The result includes the platform session token plus common identity fields:
+
+- `session_token`
+- `agent_id`
+- `identity_mode`
+- `level`
+- `display_name`
+
 ## Session Lookup
 
 For non-FastAPI code, resolve a session manually:
@@ -79,8 +97,16 @@ session = await resolve_platform_session(
 )
 ```
 
+## Local Validation
+
+Once your platform is running, validate the quickstart path with the Rare CLI:
+
+```bash
+rare register --name alice
+rare login --aud platform.example.com --platform-url http://127.0.0.1:8000/rare --public-only
+```
+
 ## Next Pages
 
 - [FastAPI Integration](fastapi-integration.md)
 - [Python API Reference](api-reference.md)
-

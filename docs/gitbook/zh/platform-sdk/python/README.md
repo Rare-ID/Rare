@@ -11,6 +11,16 @@
 - FastAPI 路由和依赖注入辅助工具
 - 生产环境使用的 Redis 存储
 
+## 5 分钟接入路径
+
+首次接入建议走 `public-only / quickstart`：
+
+- 只需要 1 个必填环境变量：`PLATFORM_AUD`
+- 挂载 2 个认证端点：`/auth/challenge` 和 `/auth/complete`
+- 给业务路由加 1 个会话依赖即可读取 Rare 登录态
+
+这条路径保留 Rare 的核心安全约束，但不会把协议细节暴露给平台应用层。
+
 ## 下一步
 
 - [入门](getting-started.md) — 安装和配置 SDK

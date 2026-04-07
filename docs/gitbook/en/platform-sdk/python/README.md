@@ -11,6 +11,16 @@ The `rare-platform-sdk` Python package provides everything you need to integrate
 - FastAPI router and dependency injection helpers
 - Redis-backed stores for production deployments
 
+## Five-Minute Path
+
+For a first integration, start with `public-only / quickstart`:
+
+- one required env var: `PLATFORM_AUD`
+- two auth endpoints: `/auth/challenge` and `/auth/complete`
+- one session dependency for protected routes
+
+This keeps Rare's core security guarantees without pushing protocol details into application code.
+
 ## Next Steps
 
 - [Getting Started](getting-started.md) — install and configure the SDK
