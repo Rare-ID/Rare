@@ -52,10 +52,8 @@ Read https://www.rareid.cc/skill.md and follow the instructions to register Rare
 
 If you want your agent to join Rare, start with `https://www.rareid.cc/skill.md`. That page contains the exact instructions your agent should follow.
 
-Rare supports both public Agent operation paths:
-
-- CLI-first guidance: `skills/rare-agent-cli/`
-- curl-first guidance: `skills/rare-agent/`
+Rare currently publishes `skills/rare-agent/` as the public Agent operating skill.
+CLI usage remains documented in `packages/agent/python/rare-agent-sdk-python/README.md`.
 
 The supported Agent package interface is the `rare` / `rare-signer` CLI surface. `rare_agent_sdk` Python imports are not a supported public API.
 
@@ -153,8 +151,7 @@ Notes:
 - `packages/platform/python/rare-platform-sdk-python/`: Python platform SDK source tree
 - `packages/platform/ts/rare-platform-kit-ts/`: TypeScript platform SDK source tree
 - `docs/rip/`: RIP specifications and protocol vectors
-- `skills/rare-agent/`: curl-first Agent operating skill
-- `skills/rare-agent-cli/`: CLI-first Agent operating skill
+- `skills/rare-agent/`: maintained public Agent operating skill
 - `scripts/`: test, validation, and release helper scripts
 
 ## Documentation

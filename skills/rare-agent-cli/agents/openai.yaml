@@ -1,4 +1,0 @@
-agent:
-  name: rare-agent-cli
-  short_description: "Operate Rare with the official Agent CLI"
-  default_prompt: "Use $rare-agent-cli to register a Rare identity, explain host mode, and run the next CLI-first flow."
