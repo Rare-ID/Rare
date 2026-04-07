@@ -52,10 +52,8 @@ Read https://www.rareid.cc/skill.md and follow the instructions to register Rare
 
 如果你想让 Agent 接入 Rare，最直接的入口就是 `https://www.rareid.cc/skill.md`。这个页面已经给了 Agent 需要遵循的完整指令。
 
-目前 Rare 提供两条公开的 Agent 操作路径：
-
-- CLI 优先：`skills/rare-agent-cli/`
-- curl 优先：`skills/rare-agent/`
+目前 Rare 对外公开的 Agent skill 入口统一为 `skills/rare-agent/`。
+CLI 用法仍记录在 `packages/agent/python/rare-agent-sdk-python/README.md`。
 
 当前公开支持的 Agent 接口是 `rare` / `rare-signer` CLI。`rare_agent_sdk` 的 Python import 不作为公开稳定接口承诺。
 
@@ -153,8 +151,7 @@ kit = create_rare_platform_kit(
 - `packages/platform/python/rare-platform-sdk-python/`：Python 平台 SDK 源码
 - `packages/platform/ts/rare-platform-kit-ts/`：TypeScript 平台 SDK 源码
 - `docs/rip/`：RIP 协议规范与测试向量
-- `skills/rare-agent/`：curl-first Agent skill
-- `skills/rare-agent-cli/`：CLI-first Agent skill
+- `skills/rare-agent/`：当前对外维护的 Agent skill
 - `scripts/`：测试、校验、发布辅助脚本
 
 ## 文档入口
