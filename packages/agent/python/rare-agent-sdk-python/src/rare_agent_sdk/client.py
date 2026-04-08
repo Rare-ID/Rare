@@ -725,19 +725,22 @@ class AgentClient:
                     raise
 
         public_attestation = self._require_public_identity_attestation()
+        complete_payload = {
+            "nonce": challenge["nonce"],
+            "agent_id": agent_id,
+            "session_pubkey": proof["session_pubkey"],
+            "delegation_token": proof["delegation_token"],
+            "signature_by_session": proof["signature_by_session"],
+            "public_identity_attestation": public_attestation,
+        }
+        if full_attestation is not None:
+            complete_payload["full_identity_attestation"] = full_attestation
+
         result = self._request_json(
             method="POST",
             service="platform",
             path="/auth/complete",
-            json_payload={
-                "nonce": challenge["nonce"],
-                "agent_id": agent_id,
-                "session_pubkey": proof["session_pubkey"],
-                "delegation_token": proof["delegation_token"],
-                "signature_by_session": proof["signature_by_session"],
-                "public_identity_attestation": public_attestation,
-                "full_identity_attestation": full_attestation,
-            },
+            json_payload=complete_payload,
         )
 
         normalized_result = self._normalize_login_result(result)

@@ -212,6 +212,51 @@ def test_login_accepts_nested_session_token_response(monkeypatch: pytest.MonkeyP
     assert state.session_pubkey == "session-pubkey"
 
 
+def test_login_omits_full_identity_attestation_when_not_available(monkeypatch: pytest.MonkeyPatch) -> None:
+    state = AgentState(
+        agent_id="agent-1",
+        key_mode="hosted-signer",
+        hosted_management_token="hosted-token",
+        hosted_management_token_expires_at=9999999999,
+        public_identity_attestation="public-jws",
+    )
+    client = AgentClient(state=state, http_client=_FakeHttpClient([]))
+    calls: list[dict[str, object]] = []
+
+    responses = iter(
+        [
+            {
+                "nonce": "nonce-1",
+                "issued_at": 100,
+                "expires_at": 220,
+            },
+            {
+                "session_pubkey": "session-pubkey",
+                "delegation_token": "delegation-jws",
+                "signature_by_session": "signature",
+            },
+            {
+                "agent_id": "agent-1",
+                "session_token": "session-token",
+            },
+        ]
+    )
+
+    def fake_request_json(**kwargs):  # noqa: ANN003, ANN201
+        calls.append(kwargs)
+        return next(responses)
+
+    monkeypatch.setattr(client, "_request_json", fake_request_json)
+
+    result = client.login(aud="platform", prefer_full=False)
+
+    assert result["session_token"] == "session-token"
+    complete_payload = calls[-1]["json_payload"]
+    assert isinstance(complete_payload, dict)
+    assert complete_payload["public_identity_attestation"] == "public-jws"
+    assert "full_identity_attestation" not in complete_payload
+
+
 def test_client_self_hosted_signs_full_issue_before_api_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
