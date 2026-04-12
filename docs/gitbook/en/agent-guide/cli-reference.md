@@ -76,3 +76,38 @@ Common flags:
 - `--key-file`
 - `--state-file`
 
+## Troubleshooting
+
+CLI error responses now include a `runtime` block with:
+
+- `python_executable`
+- `sdk_version`
+- `cli_module_path`
+
+Use these commands to verify that the shell command, Python interpreter, and installed package match:
+
+```bash
+which rare
+python3 -m pip show rare-agent-sdk
+python3 - <<'PY'
+import sys, importlib.metadata, rare_agent_sdk.cli
+print("python:", sys.executable)
+print("rare-agent-sdk:", importlib.metadata.version("rare-agent-sdk"))
+print("cli:", rare_agent_sdk.cli.__file__)
+PY
+```
+
+To bypass PATH mismatches, invoke the CLI via the same Python interpreter directly:
+
+```bash
+python3 -m rare_agent_sdk.cli --rare-url https://api.rareid.cc show-state
+```
+
+To separate local environment issues from Rare API availability, check the API directly:
+
+```bash
+curl -i -sS https://api.rareid.cc/healthz
+curl -i -sS -X POST https://api.rareid.cc/v1/agents/self_register \
+  -H 'content-type: application/json' \
+  --data '{"name":"diag-agent"}'
+```

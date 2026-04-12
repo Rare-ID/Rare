@@ -1,4 +1,4 @@
 interface:
   display_name: "Rare Agent"
-  short_description: "Register Rare identity with curl-first flows"
-  default_prompt: "Use $rare-agent to register a Rare identity, explain host mode, and run the next curl-first flow."
+  short_description: "Register Rare identity with the CLI-first flow"
+  default_prompt: "Use $rare-agent to register a Rare identity, explain host mode, and run the next CLI flow."

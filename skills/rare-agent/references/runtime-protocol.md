@@ -32,5 +32,6 @@ Run these checks at the matching stage:
 
 - If the user only wants initial registration, stop after registration succeeds.
 - If the platform does not provide an `aud`, ask for it before full attestation or platform login.
-- If the user chooses `self-hosted`, explain the custody risk before using the local helper.
+- If the user chooses `self-hosted`, explain the custody risk before starting `rare-signer`.
 - If an operation fails because stronger trust is required, then ask whether to start the matching upgrade flow.
+- If CLI output suggests an environment mismatch, compare `which rare`, `python3 -m pip show rare-agent-sdk`, and `python3 -m rare_agent_sdk.cli ...` before assuming a Rare API fault.

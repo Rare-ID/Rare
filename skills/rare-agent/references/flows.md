@@ -1,4 +1,4 @@
-# Rare Agent Flows
+# Rare Agent CLI Flows
 
 ## Setup
 
@@ -6,13 +6,33 @@ Use these defaults unless the user explicitly gives different values:
 
 ```bash
 export RARE_BASE_URL="https://api.rareid.cc"
+export PLATFORM_URL="https://platform.example.com/rare"
+export PLATFORM_AUD="platform"
 ```
 
-For hosted mode, keep sensitive values in shell variables and never echo them back in plain text:
+Install the supported public package surface:
 
 ```bash
-export AGENT_ID="..."
-export HOSTED_MANAGEMENT_TOKEN="..."
+pip install -U rare-agent-sdk
+```
+
+If the shell environment looks suspicious, verify the actual CLI path and package version:
+
+```bash
+which rare
+python3 -m pip show rare-agent-sdk
+python3 - <<'PY'
+import sys, importlib.metadata, rare_agent_sdk.cli
+print("python:", sys.executable)
+print("rare-agent-sdk:", importlib.metadata.version("rare-agent-sdk"))
+print("cli:", rare_agent_sdk.cli.__file__)
+PY
+```
+
+To bypass PATH mismatches, invoke the CLI through the same Python interpreter:
+
+```bash
+python3 -m rare_agent_sdk.cli --rare-url "$RARE_BASE_URL" show-state
 ```
 
 ## Hosted-Signer
@@ -20,91 +40,31 @@ export HOSTED_MANAGEMENT_TOKEN="..."
 ### Register
 
 ```bash
-curl -sS \
-  -X POST "$RARE_BASE_URL/v1/agents/self_register" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "name": "alice",
-    "key_mode": "hosted-signer"
-  }'
+rare register --name alice --rare-url "$RARE_BASE_URL"
 ```
 
 Success checks:
 
-- response contains `agent_id`
-- response contains `public_identity_attestation`
-- response contains `hosted_management_token`
+- output contains `agent_id`
+- output contains `public_identity_attestation`
+- output contains `hosted_management_token`
 
 ### Refresh Public Attestation
 
 ```bash
-curl -sS \
-  -X POST "$RARE_BASE_URL/v1/attestations/refresh" \
-  -H 'Content-Type: application/json' \
-  -d "{
-    \"agent_id\": \"$AGENT_ID\"
-  }"
-```
-
-### Issue Public Attestation
-
-```bash
-curl -sS \
-  -X POST "$RARE_BASE_URL/v1/attestations/public/issue" \
-  -H 'Content-Type: application/json' \
-  -d "{
-    \"agent_id\": \"$AGENT_ID\"
-  }"
+rare refresh-attestation --rare-url "$RARE_BASE_URL"
 ```
 
 ### Set Name
 
-Prepare the signed payload:
-
 ```bash
-SIGNED_SET_NAME="$(curl -sS \
-  -X POST "$RARE_BASE_URL/v1/signer/sign_set_name" \
-  -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer $HOSTED_MANAGEMENT_TOKEN" \
-  -d "{
-    \"agent_id\": \"$AGENT_ID\",
-    \"name\": \"alice-v2\",
-    \"ttl_seconds\": 120
-  }")"
-```
-
-Submit the rename:
-
-```bash
-curl -sS \
-  -X POST "$RARE_BASE_URL/v1/agents/set_name" \
-  -H 'Content-Type: application/json' \
-  -d "$SIGNED_SET_NAME"
+rare set-name --name alice-v2 --rare-url "$RARE_BASE_URL"
 ```
 
 ### Issue Full Attestation
 
-Prepare the signed request:
-
 ```bash
-SIGNED_FULL="$(curl -sS \
-  -X POST "$RARE_BASE_URL/v1/signer/sign_full_attestation_issue" \
-  -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer $HOSTED_MANAGEMENT_TOKEN" \
-  -d "{
-    \"agent_id\": \"$AGENT_ID\",
-    \"platform_aud\": \"platform\",
-    \"ttl_seconds\": 120
-  }")"
-```
-
-Issue the attestation:
-
-```bash
-curl -sS \
-  -X POST "$RARE_BASE_URL/v1/attestations/full/issue" \
-  -H 'Content-Type: application/json' \
-  -d "$SIGNED_FULL"
+rare issue-full-attestation --aud "$PLATFORM_AUD" --rare-url "$RARE_BASE_URL"
 ```
 
 ### Request Upgrade
@@ -113,81 +73,32 @@ Production note:
 
 - `L2` requests are only accepted after the agent has already reached `L1` or higher.
 
-Choose a request id first:
+Request `L1`:
 
 ```bash
-export REQUEST_ID="$(python3 - <<'PY'
-import secrets
-print(secrets.token_urlsafe(12))
-PY
-)"
-```
-
-Prepare the signed upgrade request:
-
-```bash
-SIGNED_UPGRADE="$(curl -sS \
-  -X POST "$RARE_BASE_URL/v1/signer/sign_upgrade_request" \
-  -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer $HOSTED_MANAGEMENT_TOKEN" \
-  -d "{
-    \"agent_id\": \"$AGENT_ID\",
-    \"target_level\": \"L1\",
-    \"request_id\": \"$REQUEST_ID\",
-    \"ttl_seconds\": 120
-  }")"
-```
-
-Create the upgrade request:
-
-```bash
-SIGNED_UPGRADE_REQUEST="$(printf '%s' "$SIGNED_UPGRADE" | python3 -c '
-import json, sys
-payload = json.load(sys.stdin)
-payload["contact_email"] = "owner@example.com"
-payload["send_email"] = True
-print(json.dumps(payload))
-')"
-```
-
-```bash
-curl -sS \
-  -X POST "$RARE_BASE_URL/v1/upgrades/requests" \
-  -H 'Content-Type: application/json' \
-  -d "$SIGNED_UPGRADE_REQUEST"
+rare request-upgrade \
+  --level L1 \
+  --email owner@example.com \
+  --rare-url "$RARE_BASE_URL"
 ```
 
 Check status:
 
 ```bash
-curl -sS \
-  "$RARE_BASE_URL/v1/upgrades/requests/$REQUEST_ID" \
-  -H "Authorization: Bearer $HOSTED_MANAGEMENT_TOKEN"
+rare upgrade-status --request-id <request_id> --rare-url "$RARE_BASE_URL"
 ```
 
 Resend an L1 link:
 
 ```bash
-curl -sS \
-  -X POST "$RARE_BASE_URL/v1/upgrades/l1/email/send-link" \
-  -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer $HOSTED_MANAGEMENT_TOKEN" \
-  -d "{
-    \"upgrade_request_id\": \"$REQUEST_ID\"
-  }"
+rare send-l1-link --request-id <request_id> --rare-url "$RARE_BASE_URL"
 ```
 
-Start L2 social verification:
+Request `L2`:
 
 ```bash
-curl -sS \
-  -X POST "$RARE_BASE_URL/v1/upgrades/l2/social/start" \
-  -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer $HOSTED_MANAGEMENT_TOKEN" \
-  -d "{
-    \"upgrade_request_id\": \"$REQUEST_ID\",
-    \"provider\": \"github\"
-  }"
+rare request-upgrade --level L2 --rare-url "$RARE_BASE_URL"
+rare start-social --request-id <request_id> --provider github --rare-url "$RARE_BASE_URL"
 ```
 
 Supported production providers:
@@ -198,46 +109,55 @@ Supported production providers:
 
 If `start-social` succeeds, expect an `authorize_url`. The upgrade is still pending until the provider OAuth callback finishes and a follow-up status check shows the request completed.
 
+### Platform Login
+
+Public-only login:
+
+```bash
+rare login \
+  --aud "$PLATFORM_AUD" \
+  --platform-url "$PLATFORM_URL" \
+  --rare-url "$RARE_BASE_URL" \
+  --public-only
+```
+
+Full-attestation login:
+
+```bash
+rare login \
+  --aud "$PLATFORM_AUD" \
+  --platform-url "$PLATFORM_URL" \
+  --rare-url "$RARE_BASE_URL"
+```
+
 ### Recovery
 
 Inspect available factors:
 
 ```bash
-curl -sS "$RARE_BASE_URL/v1/signer/recovery/factors/$AGENT_ID"
+rare recovery-factors --rare-url "$RARE_BASE_URL"
 ```
 
 Send a recovery email link:
 
 ```bash
-curl -sS \
-  -X POST "$RARE_BASE_URL/v1/signer/recovery/email/send-link" \
-  -H 'Content-Type: application/json' \
-  -d "{
-    \"agent_id\": \"$AGENT_ID\"
-  }"
+rare recover-hosted-token-email --rare-url "$RARE_BASE_URL"
 ```
 
 Verify a recovery email token:
 
 ```bash
-curl -sS \
-  -X POST "$RARE_BASE_URL/v1/signer/recovery/email/verify" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "token": "<token-from-email>"
-  }'
+rare recover-hosted-token-email-verify \
+  --token <token-from-email> \
+  --rare-url "$RARE_BASE_URL"
 ```
 
 Start social recovery:
 
 ```bash
-curl -sS \
-  -X POST "$RARE_BASE_URL/v1/signer/recovery/social/start" \
-  -H 'Content-Type: application/json' \
-  -d "{
-    \"agent_id\": \"$AGENT_ID\",
-    \"provider\": \"github\"
-  }"
+rare recover-hosted-token-social-start \
+  --provider github \
+  --rare-url "$RARE_BASE_URL"
 ```
 
 Supported production recovery providers:
@@ -246,159 +166,82 @@ Supported production recovery providers:
 - `linkedin`
 - `x`
 
-## Self-Hosted
-
-Install the only required helper dependency if needed:
+Rotate or revoke the hosted management token:
 
 ```bash
-python3 -m pip install cryptography
+rare rotate-hosted-token --rare-url "$RARE_BASE_URL"
+rare revoke-hosted-token --rare-url "$RARE_BASE_URL"
 ```
 
-### Generate a Keypair
+## Self-Hosted
+
+Use `rare-signer` or `rare signer-serve` so the main CLI process does not directly hold the long-term private key.
+
+### Start the Local Signer
 
 ```bash
-python3 skills/rare-agent/scripts/rare_sign.py gen-keypair \
-  --private-key-file ~/.config/rare/agent.key
+rare-signer
+```
+
+Or explicitly:
+
+```bash
+rare signer-serve
 ```
 
 ### Register
 
 ```bash
-SIGNED_REGISTER="$(python3 skills/rare-agent/scripts/rare_sign.py register \
-  --private-key-file ~/.config/rare/agent.key \
-  --name alice)"
-```
-
-```bash
-curl -sS \
-  -X POST "$RARE_BASE_URL/v1/agents/self_register" \
-  -H 'Content-Type: application/json' \
-  -d "{
-    \"name\": \"$(printf '%s' "$SIGNED_REGISTER" | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"name\"])')\",
-    \"key_mode\": \"self-hosted\",
-    \"agent_public_key\": \"$(printf '%s' "$SIGNED_REGISTER" | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"agent_id\"])')\",
-    \"nonce\": \"$(printf '%s' "$SIGNED_REGISTER" | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"nonce\"])')\",
-    \"issued_at\": $(printf '%s' "$SIGNED_REGISTER" | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"issued_at\"])'),
-    \"expires_at\": $(printf '%s' "$SIGNED_REGISTER" | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"expires_at\"])'),
-    \"signature_by_agent\": \"$(printf '%s' "$SIGNED_REGISTER" | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"signature_by_agent\"])')\"
-  }"
+rare register --name alice --key-mode self-hosted --rare-url "$RARE_BASE_URL"
 ```
 
 ### Set Name
 
 ```bash
-SIGNED_SET_NAME="$(python3 skills/rare-agent/scripts/rare_sign.py set-name \
-  --private-key-file ~/.config/rare/agent.key \
-  --agent-id "$AGENT_ID" \
-  --name alice-v2)"
-```
-
-```bash
-curl -sS \
-  -X POST "$RARE_BASE_URL/v1/agents/set_name" \
-  -H 'Content-Type: application/json' \
-  -d "$SIGNED_SET_NAME"
+rare set-name --name alice-v2 --rare-url "$RARE_BASE_URL"
 ```
 
 ### Issue Full Attestation
 
 ```bash
-SIGNED_FULL="$(python3 skills/rare-agent/scripts/rare_sign.py issue-full-attestation \
-  --private-key-file ~/.config/rare/agent.key \
-  --agent-id "$AGENT_ID" \
-  --platform-aud platform)"
-```
-
-```bash
-curl -sS \
-  -X POST "$RARE_BASE_URL/v1/attestations/full/issue" \
-  -H 'Content-Type: application/json' \
-  -d "$SIGNED_FULL"
+rare issue-full-attestation --aud "$PLATFORM_AUD" --rare-url "$RARE_BASE_URL"
 ```
 
 ### Request Upgrade
 
 ```bash
-SIGNED_UPGRADE="$(python3 skills/rare-agent/scripts/rare_sign.py upgrade-request \
-  --private-key-file ~/.config/rare/agent.key \
-  --agent-id "$AGENT_ID" \
-  --target-level L1 \
-  --contact-email owner@example.com)"
+rare request-upgrade \
+  --level L1 \
+  --email owner@example.com \
+  --rare-url "$RARE_BASE_URL"
 ```
 
 ```bash
-curl -sS \
-  -X POST "$RARE_BASE_URL/v1/upgrades/requests" \
-  -H 'Content-Type: application/json' \
-  -d "$SIGNED_UPGRADE"
+rare request-upgrade --level L2 --rare-url "$RARE_BASE_URL"
+rare start-social --request-id <request_id> --provider github --rare-url "$RARE_BASE_URL"
 ```
 
 ### Platform Login
 
-Get the platform challenge:
-
 ```bash
-CHALLENGE="$(curl -sS \
-  -X POST "https://platform.example.com/auth/challenge" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "aud": "platform"
-  }')"
+rare login \
+  --aud "$PLATFORM_AUD" \
+  --platform-url "$PLATFORM_URL" \
+  --rare-url "$RARE_BASE_URL" \
+  --public-only
 ```
 
-Generate local auth proof:
+## Not in the Stable Public CLI Surface
 
-```bash
-AUTH_PROOF="$(python3 skills/rare-agent/scripts/rare_sign.py prepare-auth \
-  --private-key-file ~/.config/rare/agent.key \
-  --agent-id "$AGENT_ID" \
-  --aud platform \
-  --nonce "$(printf '%s' "$CHALLENGE" | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"nonce\"])')" \
-  --issued-at "$(printf '%s' "$CHALLENGE" | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"issued_at\"])')" \
-  --expires-at "$(printf '%s' "$CHALLENGE" | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"expires_at\"])')" \
-  --session-private-key-file ~/.config/rare/platform-session.key)"
-```
+The supported public interface is the `rare` / `rare-signer` CLI.
 
-Complete platform login:
+Do not default to:
 
-```bash
-curl -sS \
-  -X POST "https://platform.example.com/auth/complete" \
-  -H 'Content-Type: application/json' \
-  -d "{
-    \"nonce\": \"$(printf '%s' "$CHALLENGE" | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"nonce\"])')\",
-    \"agent_id\": \"$AGENT_ID\",
-    \"session_pubkey\": \"$(printf '%s' "$AUTH_PROOF" | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"session_pubkey\"])')\",
-    \"delegation_token\": \"$(printf '%s' "$AUTH_PROOF" | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"delegation_token\"])')\",
-    \"signature_by_session\": \"$(printf '%s' "$AUTH_PROOF" | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"signature_by_session\"])')\",
-    \"public_identity_attestation\": \"<public_identity_attestation>\"
-  }"
-```
+- raw `curl` workflows for normal agent operations
+- `rare_agent_sdk` Python imports as a public SDK surface
+- internal helper scripts as the recommended user path
 
-### Sign a Platform Action
-
-```bash
-SIGNED_ACTION="$(python3 skills/rare-agent/scripts/rare_sign.py sign-action \
-  --session-private-key-file ~/.config/rare/platform-session.key \
-  --aud platform \
-  --session-token "<session_token>" \
-  --action post \
-  --action-payload '{"content":"hello"}')"
-```
-
-```bash
-curl -sS \
-  -X POST "https://platform.example.com/posts" \
-  -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer <session_token>" \
-  -d "{
-    \"content\": \"hello\",
-    \"nonce\": \"$(printf '%s' "$SIGNED_ACTION" | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"nonce\"])')\",
-    \"issued_at\": $(printf '%s' "$SIGNED_ACTION" | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"issued_at\"])'),
-    \"expires_at\": $(printf '%s' "$SIGNED_ACTION" | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"expires_at\"])'),
-    \"signature_by_session\": \"$(printf '%s' "$SIGNED_ACTION" | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"signature_by_session\"])')\"
-  }"
-```
+If a user needs lower-level action signing or custom session handling beyond the public CLI commands, explain that this is not the primary supported operating path and switch to the platform integration docs or explicitly call out that they are entering internal / advanced territory.
 
 ## External Steps
 

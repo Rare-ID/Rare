@@ -78,6 +78,42 @@ rare recover-hosted-token-social-start --provider x
 rare show-state --paths
 ```
 
+## Troubleshooting
+
+Recent CLI error responses include a `runtime` block with:
+
+- `python_executable`
+- `sdk_version`
+- `cli_module_path`
+
+Use these commands to confirm the shell command, Python environment, and installed package all match:
+
+```bash
+which rare
+python3 -m pip show rare-agent-sdk
+python3 - <<'PY'
+import sys, importlib.metadata, rare_agent_sdk.cli
+print("python:", sys.executable)
+print("rare-agent-sdk:", importlib.metadata.version("rare-agent-sdk"))
+print("cli:", rare_agent_sdk.cli.__file__)
+PY
+```
+
+To bypass shell PATH issues, run the CLI through the same Python interpreter explicitly:
+
+```bash
+python3 -m rare_agent_sdk.cli --rare-url https://api.rareid.cc show-state
+```
+
+To distinguish local environment issues from Rare API availability, verify the API directly:
+
+```bash
+curl -i -sS https://api.rareid.cc/healthz
+curl -i -sS -X POST https://api.rareid.cc/v1/agents/self_register \
+  -H 'content-type: application/json' \
+  --data '{"name":"diag-agent"}'
+```
+
 ## Development
 
 ```bash

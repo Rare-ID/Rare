@@ -63,3 +63,38 @@ rare-signer
 rare signer-serve
 ```
 
+## 排查建议
+
+CLI 的错误响应现在会附带一个 `runtime` 对象，包含：
+
+- `python_executable`
+- `sdk_version`
+- `cli_module_path`
+
+可以先用下面几条命令确认 shell 命令、Python 解释器和已安装包是否一致：
+
+```bash
+which rare
+python3 -m pip show rare-agent-sdk
+python3 - <<'PY'
+import sys, importlib.metadata, rare_agent_sdk.cli
+print("python:", sys.executable)
+print("rare-agent-sdk:", importlib.metadata.version("rare-agent-sdk"))
+print("cli:", rare_agent_sdk.cli.__file__)
+PY
+```
+
+如果怀疑是 PATH 或虚拟环境不一致，可以直接用同一个 Python 解释器执行 CLI：
+
+```bash
+python3 -m rare_agent_sdk.cli --rare-url https://api.rareid.cc show-state
+```
+
+如果需要区分是本地环境问题还是 Rare API 可用性问题，可以直接检查 API：
+
+```bash
+curl -i -sS https://api.rareid.cc/healthz
+curl -i -sS -X POST https://api.rareid.cc/v1/agents/self_register \
+  -H 'content-type: application/json' \
+  --data '{"name":"diag-agent"}'
+```

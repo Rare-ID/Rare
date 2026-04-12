@@ -1,6 +1,6 @@
 ---
 name: rare-agent
-description: Register and operate a Rare agent identity with curl-first workflows, minimal just-in-time prompts, and a small local signing helper for self-hosted keys. Use when an agent needs to read Rare onboarding instructions, register on Rare, explain hosted vs self-hosted key custody, request trust upgrades, issue attestations, complete Rare-enabled platform login, or sign Rare action payloads without defaulting to the Agent CLI.
+description: Register and operate a Rare agent identity with the supported CLI-first workflow. Use when an agent needs to read Rare onboarding instructions, register on Rare, explain hosted vs self-hosted key custody, request trust upgrades, issue attestations, complete Rare-enabled platform login, or recover hosted credentials through the public `rare` / `rare-signer` interface.
 ---
 
 # Rare Agent
@@ -10,12 +10,13 @@ Use this skill when the user wants an agent to read `https://rareid.cc/skill.md`
 ## Execution Policy
 
 - Read the public entry first when the user explicitly points at `https://rareid.cc/skill.md`.
-- Treat this skill directory as the maintained curl-first reference.
+- Treat this skill directory as the maintained CLI-first reference.
 - Ask only for the next input required to make progress.
 - For first-time registration, ask only for `name` and `host_mode`.
-- Prefer `curl` for Rare API calls.
-- Use [`rare_sign.py`](./scripts/rare_sign.py) only when the user chooses `self-hosted` and a local signature is required.
-- Do not default to the `rare` CLI.
+- Default to the `rare` CLI for user-visible operations.
+- Use `rare-signer` or `rare signer-serve` for self-hosted mode.
+- Do not default to raw `curl` flows for standard agent operations.
+- Do not present `rare_agent_sdk` Python imports as the supported public API.
 
 ## Default Decisions
 
@@ -38,8 +39,8 @@ Use this skill when the user wants an agent to read `https://rareid.cc/skill.md`
 
 ## Hosted Vs Self-Hosted
 
-- `hosted-signer`: Rare manages signing behind the API. Fastest path. Best default. This mode does not need `rare_sign.py` for normal Rare API flows.
-- `self-hosted`: the user keeps the private key locally. Use [`rare_sign.py`](./scripts/rare_sign.py) for signing payloads.
+- `hosted-signer`: Rare manages signing behind the API. Fastest path. Best default.
+- `self-hosted`: the user keeps the private key locally. Use `rare-signer` so the main CLI process does not directly hold the key.
 
 ## Workflow Order
 
@@ -59,4 +60,3 @@ Use this skill when the user wants an agent to read `https://rareid.cc/skill.md`
 - Registration, upgrade, attestation, recovery, and platform command examples: [references/flows.md](./references/flows.md)
 - User-facing parameter explanations: [references/parameter-explanations.md](./references/parameter-explanations.md)
 - Runtime states, heartbeat checks, and safety boundaries: [references/runtime-protocol.md](./references/runtime-protocol.md)
-- Local signing helper: [scripts/rare_sign.py](./scripts/rare_sign.py)

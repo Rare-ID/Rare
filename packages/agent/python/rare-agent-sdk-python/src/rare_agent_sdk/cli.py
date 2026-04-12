@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import sys
 import json
 from contextlib import suppress
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from rare_agent_sdk.client import AgentClient, AgentClientError, ApiError
@@ -162,6 +164,18 @@ def _show_state_payload(*, state_file: Path, signer_socket: Path, state) -> dict
     return payload
 
 
+def _runtime_diagnostics() -> dict[str, str]:
+    try:
+        sdk_version = version("rare-agent-sdk")
+    except PackageNotFoundError:
+        sdk_version = "unknown"
+    return {
+        "python_executable": sys.executable,
+        "sdk_version": sdk_version,
+        "cli_module_path": str(Path(__file__).resolve()),
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -268,14 +282,31 @@ def main(argv: list[str] | None = None) -> int:
                 "error": "api_error",
                 "status_code": exc.status_code,
                 "detail": exc.detail,
+                "runtime": _runtime_diagnostics(),
             }
         )
         return 1
     except AgentClientError as exc:
-        _print({"ok": False, "command": args.command, "error": "client_error", "detail": str(exc)})
+        _print(
+            {
+                "ok": False,
+                "command": args.command,
+                "error": "client_error",
+                "detail": str(exc),
+                "runtime": _runtime_diagnostics(),
+            }
+        )
         return 1
     except Exception as exc:  # noqa: BLE001
-        _print({"ok": False, "command": args.command, "error": "unexpected_error", "detail": str(exc)})
+        _print(
+            {
+                "ok": False,
+                "command": args.command,
+                "error": "unexpected_error",
+                "detail": str(exc),
+                "runtime": _runtime_diagnostics(),
+            }
+        )
         return 1
     finally:
         with suppress(Exception):

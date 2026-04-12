@@ -136,6 +136,9 @@ def test_cli_api_error_and_unexpected_error_paths(monkeypatch, tmp_path, capsys)
     api_payload = json.loads(capsys.readouterr().out.strip())
     assert api_payload["error"] == "api_error"
     assert api_payload["status_code"] == 403
+    assert api_payload["runtime"]["python_executable"]
+    assert api_payload["runtime"]["sdk_version"]
+    assert api_payload["runtime"]["cli_module_path"].endswith("cli.py")
 
     class UnexpectedFailClient(FakeClient):
         def set_name(self, *args, **kwargs):
@@ -146,6 +149,21 @@ def test_cli_api_error_and_unexpected_error_paths(monkeypatch, tmp_path, capsys)
     assert exit_code == 1
     unexpected_payload = json.loads(capsys.readouterr().out.strip())
     assert unexpected_payload["error"] == "unexpected_error"
+    assert unexpected_payload["runtime"]["python_executable"]
+    assert unexpected_payload["runtime"]["sdk_version"]
+    assert unexpected_payload["runtime"]["cli_module_path"].endswith("cli.py")
+
+
+def test_cli_client_error_path_includes_runtime_diagnostics(monkeypatch, tmp_path, capsys) -> None:
+    monkeypatch.setattr(cli_module, "AgentClient", FakeClient)
+    state_file = tmp_path / "state.json"
+    exit_code = cli_module.main(["--state-file", str(state_file), "request-upgrade", "--level", "L1"])
+    assert exit_code == 1
+    payload = json.loads(capsys.readouterr().out.strip())
+    assert payload["error"] == "client_error"
+    assert payload["runtime"]["python_executable"]
+    assert payload["runtime"]["sdk_version"]
+    assert payload["runtime"]["cli_module_path"].endswith("cli.py")
 
 
 def test_redact_payload_handles_lists() -> None:
