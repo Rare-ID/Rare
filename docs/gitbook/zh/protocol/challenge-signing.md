@@ -10,6 +10,8 @@ Rare 通过固定签名输入来防止重放和跨流程复用。
 rare-auth-v1:{aud}:{nonce}:{issued_at}:{expires_at}
 ```
 
+在普通 CLI 流程中，`aud` 由 `POST <platform-url>/auth/challenge` 的平台 challenge 响应发现。协议签名输入仍然包含 `aud`；URL-first 登录只是减少重复输入。传入 CLI `--aud` 时，它表示预期 audience pin，必须和 challenge 返回值一致。
+
 自托管注册：
 
 ```text
@@ -47,4 +49,3 @@ rare-act-v1:{aud}:{session_token}:{action}:{sha256(canonical_json(action_payload
 - `expires_at > issued_at`
 - 最多允许 30 秒时钟偏差
 - `aud`、`request_id`、`target_level` 等上下文必须完全匹配
-

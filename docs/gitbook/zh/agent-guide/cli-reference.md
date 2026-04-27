@@ -23,8 +23,10 @@ rare show-state --paths
 
 ```bash
 rare issue-full-attestation --aud platform.example.com
-rare login --aud platform.example.com --platform-url http://127.0.0.1:3000/rare
-rare login --aud platform.example.com --platform-url http://127.0.0.1:3000/rare --public-only
+rare login --platform-url http://127.0.0.1:3000/rare
+rare login --platform-url http://127.0.0.1:3000/rare --public-only
+rare login --platform-url http://127.0.0.1:3000/rare --aud platform.example.com
+rare platform-check --platform-url http://127.0.0.1:3000/rare
 ```
 
 常用登录参数：
@@ -33,6 +35,10 @@ rare login --aud platform.example.com --platform-url http://127.0.0.1:3000/rare 
 - `--delegation-ttl`
 - `--public-only`
 - `--allow-public-fallback`
+- `--aud platform.example.com`：固定预期平台 audience
+- `platform-check --action-path /posts`：指定用于校验 signed action 的平台路由
+
+默认情况下，`rare login` 会从平台 challenge 响应发现 `aud`。协议签名输入仍然包含 `aud`；CLI 只是从 `--platform-url` 发现它，而不是要求普通用户重复输入。`--aud` 是高级校验 pin，如果 challenge 返回值不一致会失败。`rare issue-full-attestation --aud ...` 保持显式 audience，因为它没有平台 challenge 步骤。
 
 ## 升级
 
@@ -74,6 +80,7 @@ CLI 的错误响应现在会附带一个 `runtime` 对象，包含：
 可以先用下面几条命令确认 shell 命令、Python 解释器和已安装包是否一致：
 
 ```bash
+rare doctor
 which rare
 python3 -m pip show rare-agent-sdk
 python3 - <<'PY'

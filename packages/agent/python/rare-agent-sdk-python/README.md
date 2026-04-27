@@ -67,16 +67,21 @@ rare start-social --request-id <request_id> --provider linkedin
 
 # produce login material for a third-party platform
 rare issue-full-attestation --aud platform
-rare login --aud platform --platform-url http://127.0.0.1:8000/platform
-rare login --aud platform --public-only
+rare login --platform-url http://127.0.0.1:8000/platform
+rare login --platform-url http://127.0.0.1:8000/platform --public-only
+rare login --platform-url http://127.0.0.1:8000/platform --aud platform
+rare platform-check --platform-url http://127.0.0.1:8000/platform
 
 # recovery and inspection
+rare doctor
 rare recovery-factors
 rare recover-hosted-token-email
 rare recover-hosted-token-email-verify --token <token>
 rare recover-hosted-token-social-start --provider x
 rare show-state --paths
 ```
+
+`rare login` is URL-first. By default it reads `aud` from the platform challenge response. Add `--aud` only to pin the expected audience and fail if the platform returns a different value.
 
 ## Troubleshooting
 

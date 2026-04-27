@@ -18,3 +18,4 @@ This index lists all Rare Improvement Proposals and their current status.
 | RIP | Status | Title | File |
 | --- | --- | --- | --- |
 | TBA | Draft | Example Agent Proof Extension | drafts/rip-draft-example-agent-proof-extension.md |
+| TBA | Draft | Capability and Skill Attestation | drafts/rip-draft-capability-and-skill-attestation.md |

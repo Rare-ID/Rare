@@ -92,8 +92,9 @@ def test_sdk_identity_flow_hosted_signing() -> None:
     assert state.hosted_management_token
     assert isinstance(state.hosted_management_token_expires_at, int)
 
-    login = client.login(aud="platform", prefer_full=False)
+    login = client.login(prefer_full=False)
     assert login["agent_id"] == state.agent_id
+    assert state.session_aud == "platform"
 
     rename = client.set_name(name="sdk-v2")
     assert rename["name"] == "sdk-v2"
@@ -118,7 +119,7 @@ def test_sdk_identity_flow_with_default_rare_url() -> None:
     register = client.register(name="sdk-default-url")
     assert register["agent_id"] == state.agent_id
 
-    login = client.login(aud="platform", prefer_full=False)
+    login = client.login(prefer_full=False)
     assert login["agent_id"] == state.agent_id
 
     client.close()
@@ -143,11 +144,100 @@ def test_sdk_identity_flow_self_hosted_signing() -> None:
     assert state.hosted_management_token is None
     assert state.hosted_management_token_expires_at is None
 
-    login = client.login(aud="platform", prefer_full=False)
+    login = client.login(prefer_full=False)
     assert login["agent_id"] == state.agent_id
 
     rename = client.set_name(name="sdk-self-v2")
     assert rename["name"] == "sdk-self-v2"
+
+    client.close()
+    http.close()
+
+
+def test_sdk_login_allows_explicit_aud_pin() -> None:
+    http = build_runtime()
+    state = AgentState()
+    client = AgentClient(
+        rare_base_url="http://testserver/rare",
+        platform_base_url="http://testserver/platform",
+        state=state,
+        http_client=http,
+    )
+
+    client.register(name="aud-pin")
+    login = client.login(aud="platform", prefer_full=False)
+
+    assert login["agent_id"] == state.agent_id
+    assert state.session_aud == "platform"
+
+    client.close()
+    http.close()
+
+
+def test_sdk_login_rejects_explicit_aud_pin_mismatch() -> None:
+    http = build_runtime()
+    state = AgentState()
+    client = AgentClient(
+        rare_base_url="http://testserver/rare",
+        platform_base_url="http://testserver/platform",
+        state=state,
+        http_client=http,
+    )
+
+    client.register(name="aud-pin-mismatch")
+    with pytest.raises(Exception, match="challenge aud mismatch"):
+        client.login(aud="other-platform", prefer_full=False)
+
+    client.close()
+    http.close()
+
+
+def test_sdk_platform_check_uses_discovered_aud() -> None:
+    http = build_runtime()
+    state = AgentState()
+    client = AgentClient(
+        rare_base_url="http://testserver/rare",
+        platform_base_url="http://testserver/platform",
+        state=state,
+        http_client=http,
+    )
+
+    client.register(name="platform-check")
+    result = client.platform_check(full=False)
+
+    assert result["ok"] is True
+    assert result["aud"] == "platform"
+    assert any(check["name"] == "login" and check["ok"] for check in result["checks"])
+    assert any(check["name"] == "signed_action_submit" and check["ok"] for check in result["checks"])
+    assert any(check["name"] == "signed_action_replay" and check["ok"] for check in result["checks"])
+
+    client.close()
+    http.close()
+
+
+def test_sdk_login_rejects_challenge_without_aud() -> None:
+    http = build_runtime()
+    state = AgentState()
+    client = AgentClient(
+        rare_base_url="http://testserver/rare",
+        platform_base_url="http://testserver/platform",
+        state=state,
+        http_client=http,
+    )
+
+    original_request_json = client._request_json
+
+    def fake_request_json(*args, **kwargs):
+        if kwargs.get("service") == "platform" and kwargs.get("path") == "/auth/challenge":
+            challenge = original_request_json(*args, **kwargs)
+            challenge.pop("aud", None)
+            return challenge
+        return original_request_json(*args, **kwargs)
+
+    client.register(name="missing-aud")
+    client._request_json = fake_request_json  # type: ignore[method-assign]
+    with pytest.raises(Exception, match="platform challenge missing aud"):
+        client.login(prefer_full=False)
 
     client.close()
     http.close()

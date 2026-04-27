@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -62,6 +63,7 @@ class AgentClient:
             if signer_socket_path
             else None
         )
+        self._signer_socket_path = signer_socket_path
 
         self._owns_http_client = http_client is None
         self._http = http_client or httpx.Client(timeout=timeout_seconds)
@@ -108,6 +110,28 @@ class AgentClient:
         if not isinstance(body, dict):
             raise AgentClientError("expected JSON object response")
         return body
+
+    def _check_json(
+        self,
+        *,
+        name: str,
+        method: str,
+        service: str,
+        path: str,
+        json_payload: dict | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        try:
+            data = self._request_json(
+                method=method,
+                service=service,
+                path=path,
+                json_payload=json_payload,
+                headers=headers,
+            )
+            return {"name": name, "ok": True, "data": data}
+        except Exception as exc:  # noqa: BLE001
+            return {"name": name, "ok": False, "detail": str(exc)}
 
     @staticmethod
     def _nested_str(payload: dict[str, Any], *path: str) -> str | None:
@@ -638,7 +662,7 @@ class AgentClient:
     def login(
         self,
         *,
-        aud: str = "platform",
+        aud: str | None = None,
         scope: list[str] | None = None,
         delegation_ttl_seconds: int = 3600,
         use_rare_signer: bool = True,
@@ -653,8 +677,14 @@ class AgentClient:
             method="POST",
             service="platform",
             path="/auth/challenge",
-            json_payload={"aud": aud},
+            json_payload={},
         )
+        challenge_aud = challenge.get("aud")
+        if not isinstance(challenge_aud, str) or not challenge_aud:
+            raise AgentClientError("platform challenge missing aud")
+        if aud is not None and challenge_aud != aud:
+            raise AgentClientError(f"challenge aud mismatch: expected {aud}, got {challenge_aud}")
+        resolved_aud = challenge_aud
 
         if self._is_self_hosted():
             if self._signer is not None:
@@ -662,7 +692,7 @@ class AgentClient:
                     "create_auth_proof",
                     self._signer.create_auth_proof,
                     agent_id=agent_id,
-                    aud=aud,
+                    aud=resolved_aud,
                     nonce=challenge["nonce"],
                     issued_at=challenge["issued_at"],
                     expires_at=challenge["expires_at"],
@@ -673,7 +703,7 @@ class AgentClient:
             else:
                 session_private_key, session_pubkey = generate_ed25519_keypair()
                 sign_input = build_auth_challenge_payload(
-                    aud=aud,
+                    aud=resolved_aud,
                     nonce=challenge["nonce"],
                     issued_at=challenge["issued_at"],
                     expires_at=challenge["expires_at"],
@@ -682,7 +712,7 @@ class AgentClient:
                 delegation = issue_agent_delegation(
                     agent_id=agent_id,
                     session_pubkey=session_pubkey,
-                    aud=aud,
+                    aud=resolved_aud,
                     scope=scope,
                     signer_private_key=load_private_key(self._require_agent_private_key()),
                     kid=f"agent-{agent_id[:8]}",
@@ -702,7 +732,7 @@ class AgentClient:
                 path="/v1/signer/prepare_auth",
                 json_payload={
                     "agent_id": agent_id,
-                    "aud": aud,
+                    "aud": resolved_aud,
                     "nonce": challenge["nonce"],
                     "issued_at": challenge["issued_at"],
                     "expires_at": challenge["expires_at"],
@@ -716,7 +746,7 @@ class AgentClient:
         full_attestation: str | None = None
         if prefer_full:
             try:
-                full_result = self.issue_full_attestation(aud=aud)
+                full_result = self.issue_full_attestation(aud=resolved_aud)
                 maybe_full = full_result.get("full_identity_attestation")
                 if isinstance(maybe_full, str):
                     full_attestation = maybe_full
@@ -744,10 +774,11 @@ class AgentClient:
         )
 
         normalized_result = self._normalize_login_result(result)
+        normalized_result.setdefault("aud", resolved_aud)
 
         self.state.session_token = self._extract_login_session_token(normalized_result)
         self.state.session_pubkey = str(proof["session_pubkey"])
-        self.state.session_aud = aud
+        self.state.session_aud = resolved_aud
 
         maybe_level = normalized_result.get("level")
         if isinstance(maybe_level, str):
@@ -758,6 +789,119 @@ class AgentClient:
             self.state.display_name = maybe_display_name
 
         return normalized_result
+
+    def doctor(self) -> dict[str, Any]:
+        checks: list[dict[str, Any]] = []
+        checks.append(
+            {
+                "name": "state",
+                "ok": bool(self.state.agent_id),
+                "detail": "agent_id present" if self.state.agent_id else "agent is not registered",
+            }
+        )
+        checks.append(
+            self._check_json(
+                name="rare_health",
+                method="GET",
+                service="rare",
+                path="/healthz",
+            )
+        )
+        checks.append(
+            self._check_json(
+                name="rare_jwks",
+                method="GET",
+                service="rare",
+                path="/.well-known/rare-keys.json",
+            )
+        )
+        if self.state.key_mode == "hosted-signer":
+            checks.append(
+                {
+                    "name": "hosted_management_token",
+                    "ok": bool(self.state.hosted_management_token),
+                    "detail": "token present" if self.state.hosted_management_token else "token missing",
+                }
+            )
+        elif self.state.key_mode == "self-hosted":
+            socket_exists = bool(self._signer_socket_path and Path(self._signer_socket_path).exists())
+            checks.append(
+                {
+                    "name": "local_signer_socket",
+                    "ok": socket_exists,
+                    "detail": self._signer_socket_path or "signer socket not configured",
+                }
+            )
+
+        return {"ok": all(bool(check.get("ok")) for check in checks), "checks": checks}
+
+    def platform_check(
+        self,
+        *,
+        aud: str | None = None,
+        full: bool = False,
+        action: str = "post",
+        action_path: str = "/posts",
+    ) -> dict[str, Any]:
+        checks: list[dict[str, Any]] = []
+        login_result = self.login(
+            aud=aud,
+            prefer_full=full,
+            full_hard_fail=full,
+        )
+        resolved_aud = self.state.session_aud or login_result.get("aud")
+        checks.append({"name": "login", "ok": True, "data": login_result})
+
+        signed = self.sign_platform_action(
+            action=action,
+            action_payload={"content": "rare platform check"},
+            aud=str(resolved_aud),
+        )
+        checks.append({"name": "signed_action", "ok": True, "data": signed})
+
+        action_payload = {
+            "content": signed["action_payload"]["content"],
+            "nonce": signed["nonce"],
+            "issued_at": signed["issued_at"],
+            "expires_at": signed["expires_at"],
+            "signature_by_session": signed["signature_by_session"],
+        }
+        action_headers = {"Authorization": f"Bearer {signed['session_token']}"}
+        checks.append(
+            self._check_json(
+                name="signed_action_submit",
+                method="POST",
+                service="platform",
+                path=action_path,
+                json_payload=action_payload,
+                headers=action_headers,
+            )
+        )
+        try:
+            self._request_json(
+                method="POST",
+                service="platform",
+                path=action_path,
+                json_payload=action_payload,
+                headers=action_headers,
+            )
+            checks.append({"name": "signed_action_replay", "ok": False, "detail": "replay was accepted"})
+        except ApiError as exc:
+            checks.append(
+                {
+                    "name": "signed_action_replay",
+                    "ok": exc.status_code < 500,
+                    "detail": str(exc),
+                }
+            )
+        except Exception as exc:  # noqa: BLE001
+            checks.append({"name": "signed_action_replay", "ok": False, "detail": str(exc)})
+
+        return {
+            "ok": all(bool(check.get("ok")) for check in checks),
+            "aud": resolved_aud,
+            "checks": checks,
+        }
 
     def sign_platform_action(
         self,
@@ -818,7 +962,7 @@ class AgentClient:
                 "signature_by_session": signature,
             }
 
-        return self._request_json(
+        signed = self._request_json(
             method="POST",
             service="rare",
             path="/v1/signer/sign_action",
@@ -835,6 +979,8 @@ class AgentClient:
             },
             headers=self._hosted_signer_headers(),
         )
+        signed.setdefault("action_payload", action_payload)
+        return signed
 
     def _require_agent_id(self) -> str:
         if not self.state.agent_id:

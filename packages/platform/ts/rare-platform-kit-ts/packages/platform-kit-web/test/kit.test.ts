@@ -21,6 +21,10 @@ function b64url(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString("base64url");
 }
 
+function validAgentId(): string {
+  return b64url(nacl.sign.keyPair().publicKey);
+}
+
 async function setupKit() {
   const [
     { privateKey: identityPriv, publicKey: identityPub },
@@ -229,7 +233,7 @@ describe("RarePlatformKit", () => {
     const { kit, identityPriv, signerPriv } = await setupKit();
     const sessionPair = nacl.sign.keyPair();
     const sessionPubkey = b64url(sessionPair.publicKey);
-    const agentId = "agent-test-id";
+    const agentId = validAgentId();
 
     const auth = await createAuthPayload({
       kit,
@@ -262,11 +266,13 @@ describe("RarePlatformKit", () => {
     const sessionPair = nacl.sign.keyPair();
     const sessionPubkey = b64url(sessionPair.publicKey);
 
+    const delegatedAgentId = validAgentId();
+    const otherAgentId = validAgentId();
     const auth = await createAuthPayload({
       kit,
       signerPriv,
       identityPriv,
-      agentId: "agent-a",
+      agentId: delegatedAgentId,
       sessionPair,
       sessionPubkey,
       delegationJti: "jti-2",
@@ -275,7 +281,7 @@ describe("RarePlatformKit", () => {
     await expect(
       kit.completeAuth({
         nonce: auth.challenge.nonce,
-        agentId: "agent-b",
+        agentId: otherAgentId,
         sessionPubkey,
         delegationToken: auth.delegation,
         signatureBySession: auth.signatureBySession,
@@ -289,7 +295,7 @@ describe("RarePlatformKit", () => {
     const { kit, identityPriv, signerPriv } = await setupKitWithRareApiClient();
     const sessionPair = nacl.sign.keyPair();
     const sessionPubkey = b64url(sessionPair.publicKey);
-    const agentId = "agent-test-id";
+    const agentId = validAgentId();
 
     const auth = await createAuthPayload({
       kit,
@@ -361,7 +367,7 @@ describe("RarePlatformKit", () => {
 
     const sessionPair = nacl.sign.keyPair();
     const sessionPubkey = b64url(sessionPair.publicKey);
-    const agentId = "agent-env-id";
+    const agentId = validAgentId();
 
     const auth = await createAuthPayload({
       kit,
@@ -417,7 +423,7 @@ describe("RarePlatformKit", () => {
     const { kit, identityPriv, signerPriv } = await setupKit();
     const sessionPair = nacl.sign.keyPair();
     const sessionPubkey = b64url(sessionPair.publicKey);
-    const agentId = "agent-replay";
+    const agentId = validAgentId();
 
     const auth1 = await createAuthPayload({
       kit,
@@ -469,7 +475,7 @@ describe("RarePlatformKit", () => {
     const { kit, identityPriv, signerPriv } = await setupKit();
     const sessionPair = nacl.sign.keyPair();
     const sessionPubkey = b64url(sessionPair.publicKey);
-    const agentId = "agent-action";
+    const agentId = validAgentId();
 
     const auth = await createAuthPayload({
       kit,

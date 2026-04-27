@@ -16,6 +16,10 @@ function b64url(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString("base64url");
 }
 
+function validAgentId(): string {
+  return b64url(nacl.sign.keyPair().publicKey);
+}
+
 async function startRuntime(): Promise<{
   runtime: DemoServerRuntime;
   baseUrl: string;
@@ -210,7 +214,7 @@ describe("platform-kit-demo server", () => {
       baseUrl,
       identityPriv,
       signerPriv,
-      agentId: "agent-demo-1",
+      agentId: validAgentId(),
       sessionPair,
     });
 
@@ -287,7 +291,7 @@ describe("platform-kit-demo server", () => {
       baseUrl,
       identityPriv,
       signerPriv,
-      agentId: "agent-demo-2",
+      agentId: validAgentId(),
       sessionPair,
     });
     const postSignature = await signAction({
@@ -337,7 +341,7 @@ describe("platform-kit-demo server", () => {
       baseUrl,
       identityPriv,
       signerPriv,
-      agentId: "agent-demo-3",
+      agentId: validAgentId(),
       sessionPair,
     });
 

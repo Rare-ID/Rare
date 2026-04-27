@@ -51,7 +51,7 @@ def _build_parser() -> argparse.ArgumentParser:
     register.add_argument("--agent-private-key", default=None)
 
     login = subparsers.add_parser("login", help="Complete challenge login")
-    login.add_argument("--aud", default="platform")
+    login.add_argument("--aud", default=None, help="Optional expected platform audience pin")
     login.add_argument("--scope", nargs="*", default=["login"])
     login.add_argument("--delegation-ttl", type=int, default=3600)
     login.add_argument("--public-only", action="store_true", help="Skip full attestation flow")
@@ -109,6 +109,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     recover_social_complete.add_argument("--provider", required=True, choices=["x", "github", "linkedin"])
     recover_social_complete.add_argument("--snapshot-json", required=True)
+    subparsers.add_parser("doctor", help="Check local Rare CLI and API readiness")
+    platform_check = subparsers.add_parser("platform-check", help="Validate a Rare-compatible platform auth flow")
+    platform_check.add_argument("--aud", default=None, help="Optional expected platform audience pin")
+    platform_check.add_argument("--full", action="store_true", help="Require full attestation during the check")
+    platform_check.add_argument("--action", default="post", help="Signed action name to test")
+    platform_check.add_argument("--action-path", default="/posts", help="Platform path that verifies the signed action")
     subparsers.add_parser("refresh-attestation", help="Refresh identity attestation")
     show_state = subparsers.add_parser("show-state", help="Show local state")
     show_state.add_argument("--paths", action="store_true", help="Include resolved local secret and socket paths")
@@ -252,6 +258,15 @@ def main(argv: list[str] | None = None) -> int:
             response = client.complete_hosted_management_recovery_social(
                 provider=args.provider,
                 provider_user_snapshot=json.loads(args.snapshot_json),
+            )
+        elif args.command == "doctor":
+            response = client.doctor()
+        elif args.command == "platform-check":
+            response = client.platform_check(
+                aud=args.aud,
+                full=args.full,
+                action=args.action,
+                action_path=args.action_path,
             )
         elif args.command == "refresh-attestation":
             response = client.refresh_attestation()

@@ -117,5 +117,8 @@ Quickstart still enforces:
 
 ```bash
 rare register --name alice
-rare login --aud <platform_aud> --platform-url http://127.0.0.1:<port>/rare --public-only
+rare login --platform-url http://127.0.0.1:<port>/rare --public-only
+rare platform-check --platform-url http://127.0.0.1:<port>/rare
 ```
+
+The platform auth challenge must return `aud`. The Rare CLI discovers that value from `POST <platform-url>/auth/challenge`; `--aud <platform_aud>` is only needed as a strict expected-audience pin.

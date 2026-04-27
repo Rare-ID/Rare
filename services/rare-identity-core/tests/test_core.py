@@ -1968,6 +1968,11 @@ def test_platform_event_ingest_updates_profile_and_blocks_replays(env: dict) -> 
     assert profile.status_code == 200
     body = profile.json()
     assert body["risk_score"] > 0
+    assert body["trust_signals"][0]["source"] == "platform"
+    assert body["trust_signals"][0]["category"] == "fraud"
+    assert body["trust_signals"][0]["confidence"] == 0.8
+    assert body["trust_signals"][0]["evidence_hash"] == "sha256:abc"
+    assert body["trust_signals"][0]["dispute_status"] == "undisputed"
     assert "abuse-reported" in body["labels"]
     assert "fraud-risk" in body["labels"]
     assert body["metadata"]["platform_event_counts"]["fraud"] == 1

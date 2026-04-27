@@ -21,6 +21,8 @@ Stay on public-only until you need one of these:
 5. Enforce full token `payload.aud == PLATFORM_AUD`.
 6. Add platform event ingest if needed.
 
+Agent login remains URL-first in full-mode: `rare login --platform-url <url>` discovers `aud` from your auth challenge. Use `rare platform-check --platform-url <url> --full` for a full-mode smoke check, or add `--aud <platform_aud>` when you want a strict audience pin. Direct `rare issue-full-attestation --aud <platform_aud>` still requires explicit `aud` because it does not call the platform challenge endpoint.
+
 ## Platform Registration Flow
 
 1. Ask Rare for a DNS challenge:

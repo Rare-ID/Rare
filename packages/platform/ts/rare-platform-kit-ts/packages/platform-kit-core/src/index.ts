@@ -56,6 +56,24 @@ export function parseRareJwks(jwks: RareJwks): Record<string, RareJwk> {
   return resolved;
 }
 
+function requireEd25519PublicKeyB64(
+  value: unknown,
+  missingMessage: string,
+  invalidMessage: string,
+): string {
+  if (typeof value !== "string") {
+    throw new Error(missingMessage);
+  }
+  try {
+    if (decodeBase64Url(value).length !== 32) {
+      throw new Error(invalidMessage);
+    }
+  } catch {
+    throw new Error(invalidMessage);
+  }
+  return value;
+}
+
 export interface VerifyIdentityOptions {
   keyResolver: KeyResolver;
   expectedAud?: string;
@@ -124,6 +142,12 @@ export async function verifyIdentityAttestation(
     throw new Error("invalid identity level");
   }
 
+  requireEd25519PublicKeyB64(
+    payload.sub,
+    "identity subject missing",
+    "identity subject must be Ed25519 public key",
+  );
+
   const now = options.currentTs ?? nowTs();
   const iat = payload.iat;
   const exp = payload.exp;
@@ -166,10 +190,11 @@ export async function verifyDelegationToken(
     throw new Error("unsupported delegation payload version");
   }
 
-  const agentId = payload.agent_id;
-  if (typeof agentId !== "string") {
-    throw new Error("delegation agent_id missing");
-  }
+  const agentId = requireEd25519PublicKeyB64(
+    payload.agent_id,
+    "delegation agent_id missing",
+    "delegation agent_id must be Ed25519 public key",
+  );
 
   let key: Awaited<ReturnType<typeof importJWK>>;
   if (payload.iss === "rare-signer") {

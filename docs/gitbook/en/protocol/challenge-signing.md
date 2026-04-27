@@ -10,6 +10,8 @@ Challenge authentication:
 rare-auth-v1:{aud}:{nonce}:{issued_at}:{expires_at}
 ```
 
+In normal CLI flows, `aud` is discovered from the platform challenge response returned by `POST <platform-url>/auth/challenge`. The protocol still signs `aud`; URL-first login only removes duplicate user input. A supplied CLI `--aud` is an expected-audience pin and must match the challenge value.
+
 Self-hosted registration:
 
 ```text
@@ -62,4 +64,3 @@ Action payload hashing uses:
 
 - Canonical RIP: `docs/rip/rip-0003-challenge-auth.md`
 - Test vectors: `docs/rip/test-vectors/rip-v1-signing-inputs.json`
-

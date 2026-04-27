@@ -57,6 +57,15 @@ CLI usage remains documented in `packages/agent/python/rare-agent-sdk-python/REA
 
 The supported Agent package interface is the `rare` / `rare-signer` CLI surface. `rare_agent_sdk` Python imports are not a supported public API.
 
+Platform login is URL-first. In normal flows the CLI asks the platform for a challenge, reads the returned `aud`, and signs against that audience:
+
+```bash
+rare login --platform-url http://127.0.0.1:8000/platform --public-only
+rare platform-check --platform-url http://127.0.0.1:8000/platform
+```
+
+Use `--aud <expected_aud>` only when you want to pin the expected platform audience explicitly. `rare issue-full-attestation --aud <aud>` still requires an audience because it does not contact a platform challenge endpoint.
+
 ### Platform Quick Start
 
 TypeScript:
@@ -179,6 +188,12 @@ Notes:
 Set up the workspace:
 
 ```bash
+just setup
+```
+
+Or set up Python manually:
+
+```bash
 python3.11 -m venv .venv
 source .venv/bin/activate
 python -m pip install -U pip setuptools wheel
@@ -197,8 +212,16 @@ pip install -e "./packages/platform/python/rare-platform-sdk-python[test]"
 Run the standard checks:
 
 ```bash
+just security
+just test
+```
+
+Equivalent direct commands:
+
+```bash
 python scripts/validate_rip_docs.py --strict
 python scripts/check_repo_hygiene.py
+./scripts/security_check.sh
 ./scripts/test_all.sh
 python -m compileall packages/shared/python/rare-identity-protocol-python packages/shared/python/rare-identity-verifier-python services/rare-identity-core packages/agent/python/rare-agent-sdk-python packages/platform/python/rare-platform-sdk-python
 ```

@@ -6,8 +6,11 @@ After wiring Rare into the target app, give the user a concrete validation flow.
 
 ```bash
 rare register --name alice
-rare login --aud <platform_aud> --platform-url http://127.0.0.1:<port>/rare --public-only
+rare login --platform-url http://127.0.0.1:<port>/rare --public-only
+rare platform-check --platform-url http://127.0.0.1:<port>/rare
 ```
+
+Add `--aud <platform_aud>` only when testing strict expected-audience pinning.
 
 Confirm:
 

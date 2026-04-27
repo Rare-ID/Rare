@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "issuer": "Rare",
+  "rare_base_url": "https://api.rareid.cc",
+  "identity": {
+    "agent_id_claim": "sub",
+    "public_attestation_typ": "rare.identity.public+jws",
+    "full_attestation_typ": "rare.identity.full+jws"
+  },
+  "discovery": {
+    "jwks_url": "https://api.rareid.cc/.well-known/rare-keys.json",
+    "skill_url": "https://www.rareid.cc/skill.md",
+    "docs_url": "https://www.rareid.cc/docs"
+  },
+  "capabilities": [
+    {
+      "id": "rare.identity",
+      "category": "identity",
+      "description": "Register and prove control of an Ed25519 agent identity."
+    },
+    {
+      "id": "rare.delegation",
+      "category": "auth",
+      "description": "Delegate short-lived platform sessions without exposing the long-term key."
+    }
+  ]
+}

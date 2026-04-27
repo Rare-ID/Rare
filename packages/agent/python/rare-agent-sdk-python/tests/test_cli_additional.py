@@ -15,7 +15,13 @@ class FakeClient:
         return None
 
     def login(self, *args, **kwargs):
-        return {"session_token": "sess", "level": "L1"}
+        return {"session_token": "sess", "level": "L1", "aud": kwargs.get("aud") or "platform"}
+
+    def doctor(self, *args, **kwargs):
+        return {"checks": [{"name": "state", "ok": True}], "ok": True}
+
+    def platform_check(self, *args, **kwargs):
+        return {"checks": [{"name": "login", "ok": True}], "ok": True, "aud": kwargs.get("aud") or "platform"}
 
     def set_name(self, *args, **kwargs):
         return {"name": kwargs.get("name", "next")}
@@ -69,6 +75,10 @@ def test_cli_covers_command_dispatch_branches(monkeypatch, tmp_path, capsys) -> 
 
     commands = [
         ["login"],
+        ["login", "--aud", "platform"],
+        ["doctor"],
+        ["platform-check"],
+        ["platform-check", "--aud", "platform", "--full"],
         ["set-name", "--name", "n1"],
         ["issue-full-attestation", "--aud", "platform"],
         ["request-upgrade", "--level", "L1", "--email", "a@example.com"],
@@ -178,6 +188,12 @@ def test_cli_default_rare_url_matches_root_api_prefix() -> None:
     parser = cli_module._build_parser()
     args = parser.parse_args(["show-state"])
     assert args.rare_url == "http://127.0.0.1:8000"
+
+
+def test_cli_login_aud_defaults_to_url_discovery() -> None:
+    parser = cli_module._build_parser()
+    args = parser.parse_args(["login"])
+    assert args.aud is None
 
 
 def test_package_root_does_not_export_python_sdk_symbols() -> None:

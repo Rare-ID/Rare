@@ -130,6 +130,7 @@ class HostedManagementTokenRecord:
 class IdentityProfileRecord:
     agent_id: str
     risk_score: float = 0.0
+    trust_signals: list[dict[str, Any]] = field(default_factory=list)
     labels: list[str] = field(default_factory=list)
     summary: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -985,6 +986,7 @@ class RareService:
         return {
             "agent_id": profile.agent_id,
             "risk_score": profile.risk_score,
+            "trust_signals": profile.trust_signals,
             "labels": profile.labels,
             "summary": profile.summary,
             "metadata": profile.metadata,
@@ -1087,6 +1089,12 @@ class RareService:
             if not isinstance(labels, list) or not all(isinstance(x, str) for x in labels):
                 raise TokenValidationError("labels must be string list")
             profile.labels = labels
+
+        if "trust_signals" in patch:
+            trust_signals = patch["trust_signals"]
+            if not isinstance(trust_signals, list) or not all(isinstance(x, dict) for x in trust_signals):
+                raise TokenValidationError("trust_signals must be object list")
+            profile.trust_signals = trust_signals
 
         if "summary" in patch:
             summary = patch["summary"]
@@ -3075,6 +3083,23 @@ class RareService:
     def _apply_negative_event_to_profile(self, event: PlatformNegativeEvent) -> None:
         profile = self._ensure_identity_profile(event.agent_id)
         now = now_ts()
+
+        signal = {
+            "source": event.platform_aud,
+            "category": event.category,
+            "confidence": round(min(max(event.severity, 1), 5) / 5.0, 4),
+            "decay": {
+                "half_life_seconds": self.platform_event_retention_seconds,
+                "observed_at": event.occurred_at,
+            },
+            "evidence_hash": event.evidence_hash,
+            "dispute_status": "undisputed",
+            "event_id": event.event_id,
+            "outcome": event.outcome,
+            "ingested_at": event.ingested_at,
+        }
+        profile.trust_signals.append(signal)
+        profile.trust_signals = profile.trust_signals[-100:]
 
         severity_weight = min(max(event.severity, 1), 5) / 5.0
         next_risk = min(1.0, profile.risk_score + 0.1 * severity_weight)

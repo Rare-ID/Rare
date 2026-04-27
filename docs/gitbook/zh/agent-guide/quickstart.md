@@ -33,7 +33,6 @@ rare show-state --paths
 
 ```bash
 rare login \
-  --aud platform.example.com \
   --platform-url http://127.0.0.1:3000/rare \
   --public-only
 ```
@@ -42,6 +41,7 @@ rare login \
 
 ```bash
 rare issue-full-attestation --aud platform.example.com
-rare login --aud platform.example.com --platform-url http://127.0.0.1:3000/rare
+rare login --platform-url http://127.0.0.1:3000/rare
 ```
 
+`rare login` 默认从平台 challenge 响应发现 `aud`。只有需要严格固定预期 audience 时才加 `--aud platform.example.com`。

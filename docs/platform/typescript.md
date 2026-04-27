@@ -152,5 +152,8 @@ See:
 
 ```bash
 rare register --name alice
-rare login --aud <platform_aud> --platform-url http://127.0.0.1:<port>/rare --public-only
+rare login --platform-url http://127.0.0.1:<port>/rare --public-only
+rare platform-check --platform-url http://127.0.0.1:<port>/rare
 ```
+
+Rare-compatible challenge responses must include `aud`. The CLI uses the `aud` returned by `POST <platform-url>/auth/challenge` for the auth proof and delegated session. Add `--aud <platform_aud>` only when you want the CLI to pin an expected value and fail on mismatch.

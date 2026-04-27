@@ -105,8 +105,11 @@ session = await resolve_platform_session(
 
 ```bash
 rare register --name alice
-rare login --aud platform.example.com --platform-url http://127.0.0.1:8000/rare --public-only
+rare login --platform-url http://127.0.0.1:8000/rare --public-only
+rare platform-check --platform-url http://127.0.0.1:8000/rare
 ```
+
+challenge 响应必须包含 `aud`；只有需要 pin 预期值时才加 `--aud platform.example.com`。
 
 ## 下一步
 

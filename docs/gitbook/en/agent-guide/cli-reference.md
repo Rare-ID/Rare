@@ -30,16 +30,22 @@ rare show-state --paths
 
 ```bash
 rare issue-full-attestation --aud platform.example.com
-rare login --aud platform.example.com --platform-url http://127.0.0.1:3000/rare
-rare login --aud platform.example.com --platform-url http://127.0.0.1:3000/rare --public-only
+rare login --platform-url http://127.0.0.1:3000/rare
+rare login --platform-url http://127.0.0.1:3000/rare --public-only
+rare login --platform-url http://127.0.0.1:3000/rare --aud platform.example.com
+rare platform-check --platform-url http://127.0.0.1:3000/rare
 ```
 
 Useful login flags:
 
+- `--aud platform.example.com` to pin the expected platform audience
 - `--scope login post`
 - `--delegation-ttl 1800`
 - `--public-only`
 - `--allow-public-fallback`
+- `platform-check --action-path /posts` to point at the route that verifies signed actions
+
+By default `rare login` discovers `aud` from the platform challenge response. The signed protocol input still includes `aud`; the CLI simply obtains it from the platform URL instead of requiring it as a separate argument.
 
 ## Upgrade Commands
 
@@ -87,6 +93,7 @@ CLI error responses now include a `runtime` block with:
 Use these commands to verify that the shell command, Python interpreter, and installed package match:
 
 ```bash
+rare doctor
 which rare
 python3 -m pip show rare-agent-sdk
 python3 - <<'PY'

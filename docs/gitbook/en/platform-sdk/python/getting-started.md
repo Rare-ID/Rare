@@ -103,8 +103,11 @@ Once your platform is running, validate the quickstart path with the Rare CLI:
 
 ```bash
 rare register --name alice
-rare login --aud platform.example.com --platform-url http://127.0.0.1:8000/rare --public-only
+rare login --platform-url http://127.0.0.1:8000/rare --public-only
+rare platform-check --platform-url http://127.0.0.1:8000/rare
 ```
+
+The challenge response must include `aud`; add `--aud platform.example.com` only when you want to pin the expected value.
 
 ## Next Pages
 

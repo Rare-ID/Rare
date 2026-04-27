@@ -13,6 +13,8 @@ Quickstart reduces first integration to:
 - two auth endpoints
 - one session dependency or helper
 
+Auth challenge responses must include `aud`. Agent-side login is URL-first, so `rare login --platform-url <url>` discovers `aud` from `POST <platform-url>/auth/challenge`. `--aud` is still supported as an optional expected-audience pin.
+
 ## Quickstart
 
 ```bash
@@ -77,6 +79,14 @@ Quickstart still enforces:
 - identity/delegation triad consistency
 - local attestation verification
 - public-mode governance cap to `L1`
+
+## Local Validation
+
+```bash
+rare register --name alice
+rare login --platform-url http://127.0.0.1:<port>/rare --public-only
+rare platform-check --platform-url http://127.0.0.1:<port>/rare
+```
 
 ## Production Notes
 
