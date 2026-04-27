@@ -10,7 +10,9 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "sideEffects": false,
   "license": "Apache-2.0",
   "repository": {
@@ -30,6 +32,6 @@
   },
   "dependencies": {
     "@rare-id/platform-kit-web": "workspace:*",
-    "fastify": "^5.2.1"
+    "fastify": "^5.8.5"
   }
 }

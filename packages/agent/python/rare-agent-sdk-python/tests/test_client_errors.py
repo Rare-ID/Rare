@@ -182,6 +182,7 @@ def test_login_accepts_nested_session_token_response(monkeypatch: pytest.MonkeyP
         [
             {
                 "nonce": "nonce-1",
+                "aud": "platform",
                 "issued_at": 100,
                 "expires_at": 220,
             },
@@ -227,6 +228,7 @@ def test_login_omits_full_identity_attestation_when_not_available(monkeypatch: p
         [
             {
                 "nonce": "nonce-1",
+                "aud": "platform",
                 "issued_at": 100,
                 "expires_at": 220,
             },
