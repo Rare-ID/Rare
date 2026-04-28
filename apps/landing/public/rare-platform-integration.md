@@ -33,7 +33,7 @@ If the app uses a different framework, map the same protocol flow to that framew
 5. Implement only the selected mode.
 6. Preserve the app's existing routing, environment, session, and middleware conventions.
 7. Add or update focused tests when the app already has a matching test setup.
-8. Provide local validation steps using `rare login --public-only` for public-only mode.
+8. Provide local validation steps using URL-first `rare login --public-only` and `rare platform-check` for public-only mode.
 
 ## Security Rules
 
@@ -88,6 +88,8 @@ For public-only mode, validate with:
 
 ```bash
 rare register --name alice
-rare login --aud <platform_aud> --platform-url http://127.0.0.1:<port>/rare --public-only
+rare login --platform-url http://127.0.0.1:<port>/rare --public-only
+rare platform-check --platform-url http://127.0.0.1:<port>/rare
 ```
 
+Rare-compatible challenge responses must include `aud`. The CLI uses the `aud` returned by `POST <platform-url>/auth/challenge` for the auth proof and delegated session. Add `--aud <platform_aud>` only when you want to pin an expected value and fail on mismatch.

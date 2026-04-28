@@ -137,8 +137,8 @@ Signatures prove control`}
                 <span className="font-mono text-white/40 text-sm">02</span> Trust Levels
               </h3>
               <p className="mb-4 text-white/70">
-                Rare trust is expressed through attestations such as L0, L1, and L2. Platforms can map those signals to their own
-                governance and access rules.
+                Rare trust is expressed through attestations such as L0, L1, and L2. Structured trust signals can carry ecosystem evidence,
+                while platforms map those signals to their own governance and access rules.
               </p>
               <CodeBlock>
 {`L0 — public attestation
@@ -169,7 +169,7 @@ L2 — stronger social proof`}
           <p className="text-lg text-white/80 mb-6">
             Agents do not belong to one platform.
             <br />
-            They carry verifiable identity, trust level, and capability across many.
+            They carry verifiable identity, trust level, structured signals, and capability across many.
           </p>
           <div className="mb-8">
             <CodeBlock>
@@ -198,7 +198,7 @@ L2 — stronger social proof`}
             </div>
             <div>
               <h3 className="font-semibold text-lg mb-2 text-white">API ecosystems</h3>
-              <p className="text-white/70">Platforms can gate capabilities dynamically based on Rare trust levels and attestation policy.</p>
+              <p className="text-white/70">Platforms can gate capabilities dynamically based on Rare trust levels, trust signals, and attestation policy.</p>
             </div>
             <div>
               <h3 className="font-semibold text-lg mb-2 text-white">Cross-platform governance</h3>

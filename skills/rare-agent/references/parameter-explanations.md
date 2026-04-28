@@ -23,7 +23,7 @@ A sensitive management token used only in `hosted-signer` mode. It authorizes Ra
 
 ## aud
 
-The platform audience string. It identifies which platform a login or full attestation is meant for. The user usually gets this value from the platform itself and it must match exactly.
+The platform audience string. It identifies which platform a login or full attestation is meant for. Normal `rare login --platform-url ...` discovers it from the platform challenge response. Ask the user for `aud` only when issuing a full attestation directly or when they want strict audience pinning.
 
 ## platform_url
 

@@ -162,7 +162,7 @@ export default function DocsPage({pathname = '/guide'}: DocsPageProps) {
                 <p className="font-mono text-xs uppercase tracking-[0.2em] text-white/45">Step 2</p>
                 <p className="mt-3 text-white font-medium">Register and verify</p>
                 <p className="mt-2 text-sm text-white/70 [font-family:var(--font-reading)] leading-relaxed">
-                  Create the identity, apply for the needed trust level, and finish login.
+                  Create the identity, request the needed trust level, and log in by platform URL.
                 </p>
               </div>
               <div className="border border-white/10 rounded-xl bg-[#050505]/45 p-5">
@@ -199,7 +199,7 @@ export default function DocsPage({pathname = '/guide'}: DocsPageProps) {
             <p className="font-mono text-xs uppercase tracking-[0.2em] text-white/50">Platform Path</p>
             <h2 className="text-2xl md:text-3xl [font-family:var(--font-elevated)] text-white mt-3">Platform integration guide</h2>
             <p className="mt-4 max-w-3xl text-white/70 [font-family:var(--font-reading)] leading-relaxed">
-              Start with <span className="text-white">public-only / quickstart</span> for Rare login, local verification, and session handling.
+              Start with <span className="text-white">public-only / quickstart</span> for URL-first Rare login, local verification, and session handling.
               Move to <span className="text-white">full-mode / production</span> only when you need platform registration, durable stores,
               full attestation, or negative event ingest.
             </p>

@@ -32,7 +32,8 @@ Use this skill when the user wants an agent to read `https://rareid.cc/skill.md`
 - Explain that `agent_id` is the long-term Ed25519 public key.
 - Ask for `email` only when the user chooses `L1`.
 - Ask for `provider` only when the user chooses `L2`, and constrain choices to `github`, `linkedin`, or `x`.
-- Ask for `platform_url` and `aud` only when the user wants platform login or platform-bound attestation.
+- Ask for `platform_url` when the user wants platform login.
+- Ask for `aud` only for platform-bound attestation or explicit strict audience pinning.
 - Explain that production `L2` currently requires the agent to already be at `L1` or higher before a social upgrade request can be created.
 - Do not claim `L1` or `L2` is complete until the external email or OAuth step is finished and status is re-checked.
 - Treat `start-social` success as "OAuth started", not "L2 complete". The final state must come from the callback completing and the upgrade status changing.

@@ -115,7 +115,6 @@ Public-only login:
 
 ```bash
 rare login \
-  --aud "$PLATFORM_AUD" \
   --platform-url "$PLATFORM_URL" \
   --rare-url "$RARE_BASE_URL" \
   --public-only
@@ -125,10 +124,28 @@ Full-attestation login:
 
 ```bash
 rare login \
-  --aud "$PLATFORM_AUD" \
   --platform-url "$PLATFORM_URL" \
   --rare-url "$RARE_BASE_URL"
 ```
+
+Strict audience pinning:
+
+```bash
+rare login \
+  --platform-url "$PLATFORM_URL" \
+  --aud "$PLATFORM_AUD" \
+  --rare-url "$RARE_BASE_URL"
+```
+
+Platform smoke check:
+
+```bash
+rare platform-check \
+  --platform-url "$PLATFORM_URL" \
+  --rare-url "$RARE_BASE_URL"
+```
+
+Normal login discovers `aud` from the platform challenge response. Use `--aud` only when the caller wants to pin the expected value. Full attestation issuance still uses explicit `rare issue-full-attestation --aud "$PLATFORM_AUD"` because it has no platform challenge step.
 
 ### Recovery
 
@@ -225,7 +242,6 @@ rare start-social --request-id <request_id> --provider github --rare-url "$RARE_
 
 ```bash
 rare login \
-  --aud "$PLATFORM_AUD" \
   --platform-url "$PLATFORM_URL" \
   --rare-url "$RARE_BASE_URL" \
   --public-only
