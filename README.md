@@ -159,6 +159,7 @@ Notes:
 - `packages/agent/python/rare-agent-sdk-python/`: Agent CLI package and local signer tooling
 - `packages/platform/python/rare-platform-sdk-python/`: Python platform SDK source tree
 - `packages/platform/ts/rare-platform-kit-ts/`: TypeScript platform SDK source tree
+- `apps/landing/`: Vite + React public landing page for `rareid.cc`
 - `docs/rip/`: RIP specifications and protocol vectors
 - `skills/rare-agent/`: maintained public CLI-based Agent operating skill
 - `scripts/`: test, validation, and release helper scripts

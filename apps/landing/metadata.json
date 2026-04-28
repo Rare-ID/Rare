@@ -1,0 +1,5 @@
+{
+  "name": "Rare",
+  "description": "Public protocol and tooling for agent-native identity, trust, and platform integrations.",
+  "requestFramePermissions": []
+}

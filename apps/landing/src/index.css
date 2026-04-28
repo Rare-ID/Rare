@@ -1,0 +1,150 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+:root {
+  --font-elevated: "Cormorant Garamond", ui-serif, Georgia, serif;
+  --font-reading: "Manrope", "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+body {
+  background-color: #fcfcfc;
+  color: #111111;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background-color: #111111;
+  color: #fcfcfc;
+}
+
+.whitepaper-prose {
+  font-family: var(--font-reading);
+  color: rgb(252 252 252 / 0.84);
+  line-height: 1.85;
+  font-size: 1.03rem;
+}
+
+.whitepaper-prose > * + * {
+  margin-top: 1rem;
+}
+
+.whitepaper-prose h1,
+.whitepaper-prose h2,
+.whitepaper-prose h3,
+.whitepaper-prose h4 {
+  font-family: var(--font-elevated);
+  color: #fcfcfc;
+  letter-spacing: 0.01em;
+  line-height: 1.15;
+  margin-top: 2.25rem;
+}
+
+.whitepaper-prose h1 {
+  font-size: clamp(2.2rem, 5vw, 3.6rem);
+}
+
+.whitepaper-prose h2 {
+  font-size: clamp(1.65rem, 3.3vw, 2.45rem);
+}
+
+.whitepaper-prose h3 {
+  font-size: clamp(1.3rem, 2.4vw, 1.8rem);
+}
+
+.whitepaper-prose p,
+.whitepaper-prose ul,
+.whitepaper-prose ol,
+.whitepaper-prose blockquote {
+  color: rgb(252 252 252 / 0.8);
+}
+
+.whitepaper-prose ul,
+.whitepaper-prose ol {
+  padding-left: 1.3rem;
+}
+
+.whitepaper-prose ul {
+  list-style: disc;
+}
+
+.whitepaper-prose ol {
+  list-style: decimal;
+}
+
+.whitepaper-prose li + li {
+  margin-top: 0.4rem;
+}
+
+.whitepaper-prose a {
+  color: #fcfcfc;
+  text-decoration: underline;
+  text-decoration-color: rgb(252 252 252 / 0.35);
+  text-underline-offset: 0.18em;
+}
+
+.whitepaper-prose a:hover {
+  text-decoration-color: rgb(252 252 252 / 0.75);
+}
+
+.whitepaper-prose code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: rgb(255 255 255 / 0.08);
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 0.25rem;
+  padding: 0.1rem 0.35rem;
+}
+
+.whitepaper-prose pre {
+  background: rgb(255 255 255 / 0.06);
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 0.75rem;
+  padding: 1rem 1.15rem;
+  overflow-x: auto;
+}
+
+.whitepaper-prose pre code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+
+.whitepaper-prose blockquote {
+  border-left: 2px solid rgb(255 255 255 / 0.28);
+  padding-left: 1rem;
+  font-style: italic;
+}
+
+.whitepaper-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+
+.whitepaper-prose th,
+.whitepaper-prose td {
+  border: 1px solid rgb(255 255 255 / 0.14);
+  padding: 0.55rem 0.65rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.whitepaper-prose th {
+  color: #fcfcfc;
+  background: rgb(255 255 255 / 0.05);
+}
+
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}

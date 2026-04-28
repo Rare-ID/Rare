@@ -1,0 +1,8 @@
+<svg width="256" height="256" viewBox="-10 -10 256 256" xmlns="http://www.w3.org/2000/svg">
+  <g fill="none" stroke="currentColor" stroke-linecap="square" stroke-linejoin="miter">
+    <rect x="38" y="38" width="140" height="140" stroke-width="10"/>
+    <rect x="58" y="58" width="140" height="140" stroke-width="10" opacity=".28"/>
+    <path d="M108 84 V148" stroke-width="10" data-axis="accent"/>
+    <path d="M78 108 H138" stroke-width="10" opacity=".88"/>
+  </g>
+</svg>

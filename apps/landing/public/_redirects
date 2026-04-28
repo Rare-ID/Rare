@@ -1,0 +1,9 @@
+/sitemap.xml/ /sitemap.xml 301
+/robots.txt/ /robots.txt 301
+/about /about/ 301
+/guide /guide/ 301
+/docs /guide/ 301
+/docs/platform /guide/platform/ 301
+/docs/platform/typescript /guide/platform/typescript/ 301
+/docs/platform/python /guide/platform/python/ 301
+/whitepaper /whitepaper/ 301

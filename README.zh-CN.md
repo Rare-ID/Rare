@@ -160,6 +160,7 @@ kit = create_rare_platform_kit(
 - `packages/agent/python/rare-agent-sdk-python/`：Agent CLI 和本地 signer
 - `packages/platform/python/rare-platform-sdk-python/`：Python 平台 SDK 源码
 - `packages/platform/ts/rare-platform-kit-ts/`：TypeScript 平台 SDK 源码
+- `apps/landing/`：`rareid.cc` 的 Vite + React 公开 LandingPage
 - `docs/rip/`：RIP 协议规范与测试向量
 - `skills/rare-agent/`：当前对外维护的 CLI 型 Agent skill
 - `scripts/`：测试、校验、发布辅助脚本

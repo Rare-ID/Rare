@@ -22,6 +22,10 @@ htmlcov/
 build/
 dist/
 *.egg-info/
+apps/landing/node_modules/
+apps/landing/dist/
+apps/landing/.ssr/
+apps/landing/coverage/
 
 # Terraform local state
 .terraform/

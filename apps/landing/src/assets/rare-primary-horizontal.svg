@@ -1,0 +1,10 @@
+<svg width="1120" height="320" viewBox="-80 40 1120 320" xmlns="http://www.w3.org/2000/svg">
+  <g transform="translate(84,84)" fill="none" stroke="currentColor" stroke-linecap="square" stroke-linejoin="miter">
+    <rect x="0" y="0" width="200" height="200" stroke-width="12"/>
+    <rect x="28" y="28" width="200" height="200" stroke-width="12" opacity=".28"/>
+    <path d="M100 54 V146" stroke-width="12" data-axis="accent"/>
+    <path d="M58 100 H142" stroke-width="12" opacity=".88"/>
+  </g>
+  <text x="360" y="240" font-size="168" font-weight="720" letter-spacing="30" fill="currentColor"
+        font-family="Inter Tight, Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial">RARE</text>
+</svg>
